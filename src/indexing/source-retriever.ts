@@ -32,11 +32,34 @@ const SKIP_DIRS = new Set([
   'vendor',
 ]);
 
+// Default max file size: 5MB
+const DEFAULT_MAX_FILE_SIZE = 5 * 1024 * 1024;
+
 // ─── File Discovery ──────────────────────────────────────────────────────────
 
-export function discoverFiles(codebasePath: string, extensions?: Set<string>): string[] {
-  const exts = extensions ?? SUPPORTED_EXTENSIONS_SET;
+export interface DiscoverFilesOptions {
+  extensions?: Set<string>;
+  maxFileSize?: number; // in bytes, default 5MB
+}
+
+export function discoverFiles(
+  codebasePath: string,
+  optionsOrExtensions?: Set<string> | DiscoverFilesOptions
+): string[] {
+  // Handle both old signature (Set<string>) and new signature (options object)
+  let exts: Set<string>;
+  let maxFileSize: number;
+
+  if (optionsOrExtensions instanceof Set) {
+    exts = optionsOrExtensions;
+    maxFileSize = DEFAULT_MAX_FILE_SIZE;
+  } else {
+    exts = optionsOrExtensions?.extensions ?? SUPPORTED_EXTENSIONS_SET;
+    maxFileSize = optionsOrExtensions?.maxFileSize ?? DEFAULT_MAX_FILE_SIZE;
+  }
+
   const files: string[] = [];
+  let skippedLargeFiles = 0;
 
   function walk(dir: string) {
     let entries: fs.Dirent[];
@@ -54,13 +77,28 @@ export function discoverFiles(codebasePath: string, extensions?: Set<string>): s
       } else if (entry.isFile()) {
         const ext = path.extname(entry.name);
         if (exts.has(ext)) {
-          files.push(path.join(dir, entry.name));
+          const filePath = path.join(dir, entry.name);
+          try {
+            const stat = fs.statSync(filePath);
+            if (stat.size <= maxFileSize) {
+              files.push(filePath);
+            } else {
+              skippedLargeFiles++;
+            }
+          } catch {
+            // Skip files we can't stat
+          }
         }
       }
     }
   }
 
   walk(codebasePath);
+
+  if (skippedLargeFiles > 0) {
+    console.log(`Skipped ${skippedLargeFiles} files larger than ${(maxFileSize / 1024 / 1024).toFixed(1)}MB`);
+  }
+
   return files;
 }
 
