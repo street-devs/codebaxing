@@ -351,6 +351,7 @@ Embedding model hiểu rằng:
 |------|-------|----------|
 | `CHROMADB_URL` | URL ChromaDB server để lưu trữ vĩnh viễn | (in-memory) |
 | `CODEBAXING_DEVICE` | Thiết bị tính toán: `cpu`, `webgpu`, `cuda`, `auto` | `cpu` |
+| `CODEBAXING_MAX_FILE_SIZE` | Kích thước file tối đa để index (MB) | `1` |
 
 ### Lưu trữ vĩnh viễn
 

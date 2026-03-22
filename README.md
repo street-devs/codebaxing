@@ -351,6 +351,7 @@ The embedding model understands that:
 |----------|-------------|---------|
 | `CHROMADB_URL` | ChromaDB server URL for persistent storage | (in-memory) |
 | `CODEBAXING_DEVICE` | Compute device: `cpu`, `webgpu`, `cuda`, `auto` | `cpu` |
+| `CODEBAXING_MAX_FILE_SIZE` | Max file size to index (in MB) | `1` |
 
 ### Persistent Storage
 

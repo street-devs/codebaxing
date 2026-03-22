@@ -32,8 +32,17 @@ const SKIP_DIRS = new Set([
   'vendor',
 ]);
 
-// Default max file size: 3MB
-const DEFAULT_MAX_FILE_SIZE = 3 * 1024 * 1024;
+// Default max file size: 1MB (configurable via CODEBAXING_MAX_FILE_SIZE env var in MB)
+function getMaxFileSize(): number {
+  const envSize = process.env.CODEBAXING_MAX_FILE_SIZE;
+  if (envSize) {
+    const sizeMB = parseFloat(envSize);
+    if (!isNaN(sizeMB) && sizeMB > 0) {
+      return sizeMB * 1024 * 1024;
+    }
+  }
+  return 1 * 1024 * 1024; // Default 1MB
+}
 
 // ─── File Discovery ──────────────────────────────────────────────────────────
 
@@ -52,10 +61,10 @@ export function discoverFiles(
 
   if (optionsOrExtensions instanceof Set) {
     exts = optionsOrExtensions;
-    maxFileSize = DEFAULT_MAX_FILE_SIZE;
+    maxFileSize = getMaxFileSize();
   } else {
     exts = optionsOrExtensions?.extensions ?? SUPPORTED_EXTENSIONS_SET;
-    maxFileSize = optionsOrExtensions?.maxFileSize ?? DEFAULT_MAX_FILE_SIZE;
+    maxFileSize = optionsOrExtensions?.maxFileSize ?? getMaxFileSize();
   }
 
   const files: string[] = [];
