@@ -189,7 +189,7 @@ npm install -g codebaxing
 ### Option 3: Clone from source
 
 ```bash
-git clone https://github.com/street-devs/codebaxing.git
+git clone https://github.com/duysolo/codebaxing.git
 cd codebaxing
 npm install
 npm run build

@@ -37,11 +37,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/street-devs/codebaxing.git"
+    "url": "git+https://github.com/duysolo/codebaxing.git"
   },
-  "homepage": "https://github.com/street-devs/codebaxing#readme",
+  "homepage": "https://github.com/duysolo/codebaxing#readme",
   "bugs": {
-    "url": "https://github.com/street-devs/codebaxing/issues"
+    "url": "https://github.com/duysolo/codebaxing/issues"
   },
   "engines": {
     "node": ">=20.0.0"
