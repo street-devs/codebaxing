@@ -21,16 +21,45 @@ export const SUPPORTED_EXTENSIONS = [...getSupportedExtensions()];
 const SUPPORTED_EXTENSIONS_SET = new Set(SUPPORTED_EXTENSIONS);
 
 const SKIP_DIRS = new Set([
-  '.git', 'node_modules', '__pycache__', '.codebaxing', 'venv', '.venv',
-  '.tox', '.mypy_cache', '.pytest_cache', 'dist', 'build', '.eggs',
-  '.next', '.turbo', '.vercel', '.expo',
-  'coverage', '.nyc_output',
-  '.cache', '.parcel-cache',
-  'out', '.output',
-  'generated', '.generated',
-  '.contentlayer',
-  'vendor',
+  // Version control
+  '.git', '.svn', '.hg',
+  // Dependencies
+  'node_modules', 'vendor', 'bower_components', 'jspm_packages',
+  'packages', '.pnpm', '.yarn',
+  // Python
+  '__pycache__', 'venv', '.venv', '.tox', '.mypy_cache', '.pytest_cache',
+  '.eggs', 'egg-info', '.python-version',
+  // Build outputs
+  'dist', 'build', 'out', '.output', 'target', 'bin', 'obj',
+  // Framework specific
+  '.next', '.nuxt', '.turbo', '.vercel', '.expo', '.svelte-kit',
+  '.angular', '.nx',
+  // Generated
+  'generated', '.generated', '.contentlayer', 'auto-generated',
+  // Cache
+  '.cache', '.parcel-cache', '.webpack', '.eslintcache',
+  // Coverage
+  'coverage', '.nyc_output', 'htmlcov',
+  // IDE
+  '.idea', '.vscode', '.vs',
+  // Misc
+  '.codebaxing', 'tmp', 'temp', 'logs',
+  // Test fixtures (often have many small files)
+  'fixtures', '__fixtures__', '__mocks__', '__snapshots__',
 ]);
+
+// Files to skip (patterns)
+const SKIP_FILE_PATTERNS = [
+  /\.min\.(js|css)$/,      // Minified files
+  /\.bundle\.(js|ts)$/,    // Bundled files
+  /\.generated\./,         // Generated files
+  /\.d\.ts$/,              // TypeScript declaration files
+  /\.map$/,                // Source maps
+  /lock\.(json|yaml)$/,    // Lock files
+  /package-lock\.json$/,
+  /yarn\.lock$/,
+  /pnpm-lock\.yaml$/,
+];
 
 // Default max file size: 1MB (configurable via CODEBAXING_MAX_FILE_SIZE env var in MB)
 function getMaxFileSize(): number {
@@ -42,6 +71,19 @@ function getMaxFileSize(): number {
     }
   }
   return 1 * 1024 * 1024; // Default 1MB
+}
+
+// Max chunks to index (configurable via CODEBAXING_MAX_CHUNKS env var)
+// Default: 50000 chunks (~1 hour on CPU)
+function getMaxChunks(): number {
+  const envMax = process.env.CODEBAXING_MAX_CHUNKS;
+  if (envMax) {
+    const max = parseInt(envMax, 10);
+    if (!isNaN(max) && max > 0) {
+      return max;
+    }
+  }
+  return 50000; // Default 50k chunks
 }
 
 // ─── File Discovery ──────────────────────────────────────────────────────────
@@ -93,6 +135,10 @@ export function discoverFiles(
       } else if (entry.isFile()) {
         const ext = path.extname(entry.name);
         if (exts.has(ext)) {
+          // Skip files matching skip patterns
+          const shouldSkip = SKIP_FILE_PATTERNS.some(pattern => pattern.test(entry.name));
+          if (shouldSkip) continue;
+
           const filePath = path.join(dir, entry.name);
           try {
             const stat = fs.statSync(filePath);
@@ -329,8 +375,37 @@ export class SourceRetriever {
       this.log(`Parsed ${allSymbols.length.toLocaleString()} symbols from ${allFiles.length} files`);
     }
 
-    // Step 3: Create chunks
-    const chunks = allSymbols.map(s => this.createChunk(s));
+    // Step 3: Filter trivial symbols and create chunks
+    const minCodeLength = 30; // Minimum code length to be worth indexing
+    const filteredSymbols = allSymbols.filter(s => {
+      // Skip symbols with very short code
+      if (!s.codeSnippet || s.codeSnippet.length < minCodeLength) return false;
+      // Skip single-line variables (usually just imports or simple assignments)
+      if (s.type === 'variable' && s.lineEnd - s.lineStart < 2) return false;
+      return true;
+    });
+
+    if (this.verbose && filteredSymbols.length < allSymbols.length) {
+      const skipped = allSymbols.length - filteredSymbols.length;
+      console.log(`Filtered ${skipped.toLocaleString()} trivial symbols (${filteredSymbols.length.toLocaleString()} remaining)`);
+    }
+
+    let chunksToIndex = filteredSymbols.map(s => this.createChunk(s));
+
+    // Apply max chunks limit with smart sampling
+    const maxChunks = getMaxChunks();
+    if (chunksToIndex.length > maxChunks) {
+      if (this.verbose) {
+        console.log(`\n⚠️  Chunk limit reached (${chunksToIndex.length.toLocaleString()} > ${maxChunks.toLocaleString()})`);
+        console.log(`   Sampling ${maxChunks.toLocaleString()} most important chunks...`);
+        console.log(`   Tip: Set CODEBAXING_MAX_CHUNKS=100000 to increase limit\n`);
+      }
+      // Sort by code length (longer = more important) and take top N
+      chunksToIndex.sort((a, b) => b.text.length - a.text.length);
+      chunksToIndex = chunksToIndex.slice(0, maxChunks);
+    }
+
+    const chunks = chunksToIndex;
     this.stats.totalChunks = chunks.length;
     emit('chunks_created', { total: chunks.length });
 
