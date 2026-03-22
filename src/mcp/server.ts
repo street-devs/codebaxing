@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /**
  * MCP Server for Codebaxing — Semantic code search and source retrieval.
  *

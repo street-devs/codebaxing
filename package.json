@@ -1,28 +1,48 @@
 {
   "name": "codebaxing",
   "version": "0.1.0",
-  "description": "Local codebase indexing and semantic search via MCP",
+  "description": "MCP server for semantic code search. Index your codebase and search using natural language.",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
     "codebaxing": "dist/mcp/server.js"
   },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc",
     "start": "node dist/mcp/server.js",
     "dev": "tsx src/mcp/server.ts",
     "test": "vitest",
     "lint": "eslint src/",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
   },
   "keywords": [
     "mcp",
+    "model-context-protocol",
     "code-search",
     "semantic-search",
     "codebase-indexing",
-    "tree-sitter"
+    "tree-sitter",
+    "embeddings",
+    "vector-search",
+    "claude",
+    "ai"
   ],
+  "author": "Street Devs",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/street-devs/codebaxing.git"
+  },
+  "homepage": "https://github.com/street-devs/codebaxing#readme",
+  "bugs": {
+    "url": "https://github.com/street-devs/codebaxing/issues"
+  },
   "engines": {
     "node": ">=20.0.0"
   },

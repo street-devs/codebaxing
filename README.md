@@ -176,20 +176,26 @@ This allows finding code by **meaning**, not just keywords.
 
 ## Installation
 
-### 1. Clone the repository
+### Option 1: Via npx (Recommended)
+
+No installation needed! Just configure Claude Desktop directly.
+
+### Option 2: Via npm (Global install)
+
+```bash
+npm install -g codebaxing
+```
+
+### Option 3: Clone from source
 
 ```bash
 git clone https://github.com/street-devs/codebaxing.git
 cd codebaxing
-```
-
-### 2. Install dependencies
-
-```bash
 npm install
+npm run build
 ```
 
-### 3. (Optional) Set up persistent storage
+### (Optional) Set up persistent storage
 
 By default, the index is stored in memory and lost when the server restarts.
 
@@ -203,25 +209,59 @@ docker run -d -p 8000:8000 chromadb/chroma
 export CHROMADB_URL=http://localhost:8000
 ```
 
-### 4. Configure Claude Desktop
+### Configure Claude Desktop
 
 Add to your Claude Desktop config file:
 
 **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
 **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
 
+#### Via npx (no install needed):
+
 ```json
 {
   "mcpServers": {
     "codebaxing": {
       "command": "npx",
-      "args": ["tsx", "/path/to/codebaxing/src/mcp/server.ts"]
+      "args": ["-y", "codebaxing"]
     }
   }
 }
 ```
 
-Or with compiled version:
+#### Via global install:
+
+```bash
+npm install -g codebaxing
+```
+
+```json
+{
+  "mcpServers": {
+    "codebaxing": {
+      "command": "codebaxing"
+    }
+  }
+}
+```
+
+#### With persistent storage (ChromaDB):
+
+```json
+{
+  "mcpServers": {
+    "codebaxing": {
+      "command": "npx",
+      "args": ["-y", "codebaxing"],
+      "env": {
+        "CHROMADB_URL": "http://localhost:8000"
+      }
+    }
+  }
+}
+```
+
+#### From source (development):
 
 ```json
 {
@@ -234,23 +274,7 @@ Or with compiled version:
 }
 ```
 
-With persistent storage:
-
-```json
-{
-  "mcpServers": {
-    "codebaxing": {
-      "command": "npx",
-      "args": ["tsx", "/path/to/codebaxing/src/mcp/server.ts"],
-      "env": {
-        "CHROMADB_URL": "http://localhost:8000"
-      }
-    }
-  }
-}
-```
-
-### 5. Restart Claude Desktop
+### Restart Claude Desktop
 
 The Codebaxing tools will now be available in Claude.
 

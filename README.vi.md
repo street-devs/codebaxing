@@ -176,20 +176,26 @@ Embedding model được train trên hàng triệu cặp text, học được r�
 
 ## Cài đặt
 
-### 1. Clone repository
+### Cách 1: Qua npx (Khuyến nghị)
+
+Không cần cài đặt! Chỉ cần cấu hình Claude Desktop trực tiếp.
+
+### Cách 2: Qua npm (Cài global)
+
+```bash
+npm install -g codebaxing
+```
+
+### Cách 3: Clone từ source
 
 ```bash
 git clone https://github.com/street-devs/codebaxing.git
 cd codebaxing
-```
-
-### 2. Cài đặt dependencies
-
-```bash
 npm install
+npm run build
 ```
 
-### 3. (Tùy chọn) Cài đặt persistent storage
+### (Tùy chọn) Cài đặt persistent storage
 
 Mặc định, index được lưu trong memory và mất khi server restart.
 
@@ -203,25 +209,59 @@ docker run -d -p 8000:8000 chromadb/chroma
 export CHROMADB_URL=http://localhost:8000
 ```
 
-### 4. Cấu hình Claude Desktop
+### Cấu hình Claude Desktop
 
 Thêm vào file config của Claude Desktop:
 
 **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
 **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
 
+#### Qua npx (không cần cài):
+
 ```json
 {
   "mcpServers": {
     "codebaxing": {
       "command": "npx",
-      "args": ["tsx", "/path/to/codebaxing/src/mcp/server.ts"]
+      "args": ["-y", "codebaxing"]
     }
   }
 }
 ```
 
-Hoặc với bản đã compile:
+#### Qua global install:
+
+```bash
+npm install -g codebaxing
+```
+
+```json
+{
+  "mcpServers": {
+    "codebaxing": {
+      "command": "codebaxing"
+    }
+  }
+}
+```
+
+#### Với persistent storage (ChromaDB):
+
+```json
+{
+  "mcpServers": {
+    "codebaxing": {
+      "command": "npx",
+      "args": ["-y", "codebaxing"],
+      "env": {
+        "CHROMADB_URL": "http://localhost:8000"
+      }
+    }
+  }
+}
+```
+
+#### Từ source (development):
 
 ```json
 {
@@ -234,23 +274,7 @@ Hoặc với bản đã compile:
 }
 ```
 
-Với persistent storage:
-
-```json
-{
-  "mcpServers": {
-    "codebaxing": {
-      "command": "npx",
-      "args": ["tsx", "/path/to/codebaxing/src/mcp/server.ts"],
-      "env": {
-        "CHROMADB_URL": "http://localhost:8000"
-      }
-    }
-  }
-}
-```
-
-### 5. Khởi động lại Claude Desktop
+### Khởi động lại Claude Desktop
 
 Các tool Codebaxing sẽ có sẵn trong Claude.
 
