@@ -276,15 +276,31 @@ export class SourceRetriever {
     emit('files_found', { files: allFiles, codebasePath: this.codebasePath });
     if (!options.progressCallback) this.log(`Found ${allFiles.length} files`);
 
-    // Step 2: Parse all files
+    // Step 2: Parse all files with progress
     emit('parsing_start', { total: allFiles.length });
+
+    // Create a progress callback for CLI if verbose
+    const parseProgressCallback = options.progressCallback ?? (
+      this.verbose ? (eventType: string, data: Record<string, unknown>) => {
+        if (eventType === 'file_parsed') {
+          const index = data.index as number;
+          const total = data.total as number;
+          const filePath = data.path as string;
+          const relativePath = path.relative(this.codebasePath, filePath);
+          const pct = ((index / total) * 100).toFixed(1);
+          process.stdout.write(`\rParsing: ${index}/${total} (${pct}%) - ${relativePath.slice(0, 50).padEnd(50)}`);
+        }
+      } : undefined
+    );
+
     const { symbols: allSymbols, errorCount } = parallelParseFiles(allFiles, {
-      progressCallback: options.progressCallback,
+      progressCallback: parseProgressCallback,
     });
     this.stats.parseErrors = errorCount;
     this.stats.totalSymbols = allSymbols.length;
 
     if (!options.progressCallback) {
+      process.stdout.write('\r' + ' '.repeat(120) + '\r'); // Clear progress line
       this.log(`Parsed ${allSymbols.length.toLocaleString()} symbols from ${allFiles.length} files`);
     }
 
@@ -310,13 +326,26 @@ export class SourceRetriever {
     }
 
     const batchSize = 100;
+    const embeddingStartTime = performance.now();
+
     for (let i = 0; i < chunks.length; i += batchSize) {
       const batch = chunks.slice(i, i + batchSize);
+      const currentProgress = Math.min(i + batchSize, chunks.length);
 
       emit('embedding_progress', {
-        current: Math.min(i + batchSize, chunks.length),
+        current: currentProgress,
         total: chunks.length,
       });
+
+      // Show progress in CLI
+      if (!options.progressCallback && this.verbose) {
+        const pct = ((currentProgress / chunks.length) * 100).toFixed(1);
+        const elapsed = (performance.now() - embeddingStartTime) / 1000;
+        const rate = currentProgress / elapsed;
+        const remaining = (chunks.length - currentProgress) / rate;
+        const eta = remaining > 60 ? `${(remaining / 60).toFixed(1)}m` : `${remaining.toFixed(0)}s`;
+        process.stdout.write(`\rEmbedding: ${currentProgress}/${chunks.length} (${pct}%) - ETA: ${eta}    `);
+      }
 
       try {
         const texts = batch.map(c => c.text);
@@ -333,6 +362,10 @@ export class SourceRetriever {
           this.log(`Error embedding batch ${i}: ${(e as Error).message}`);
         }
       }
+    }
+
+    if (!options.progressCallback && this.verbose) {
+      process.stdout.write('\r' + ' '.repeat(80) + '\r'); // Clear progress line
     }
 
     this.stats.indexingTime = (performance.now() - startTime) / 1000;
