@@ -32,8 +32,8 @@ const SKIP_DIRS = new Set([
   'vendor',
 ]);
 
-// Default max file size: 5MB
-const DEFAULT_MAX_FILE_SIZE = 5 * 1024 * 1024;
+// Default max file size: 3MB
+const DEFAULT_MAX_FILE_SIZE = 3 * 1024 * 1024;
 
 // ─── File Discovery ──────────────────────────────────────────────────────────
 
