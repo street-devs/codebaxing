@@ -1,23 +1,39 @@
 # Codebaxing (Node.js/TypeScript)
 
-MCP server for semantic code search. Node.js port of the Python codebaxing.
+MCP server for semantic code search using vector embeddings.
 
-## Structure
+## How It Works
+
+```
+Source Code → Tree-sitter (AST) → Symbols → Embedding Model → Vectors → ChromaDB
+                                                                            ↓
+Query → Embedding Model → Query Vector → Cosine Similarity → Top-k Results
+```
+
+1. **Tree-sitter** parses code into AST, extracts functions/classes/methods
+2. **all-MiniLM-L6-v2** converts code chunks to 384-dim vectors (runs locally via ONNX)
+3. **ChromaDB** stores vectors for fast similarity search
+4. **Search** embeds query and finds nearest neighbors by cosine similarity
+
+## Project Structure
 
 ```
 src/
-├── core/models.ts              # Symbol, ParsedFile, CodebaseIndex + Memory, MemoryType
-├── core/interfaces.ts          # IParser interface
-├── core/exceptions.ts          # Error hierarchy
-├── parsers/treesitter-parser.ts  # Multi-language AST parsing (9 languages)
-├── parsers/language-configs.ts   # Tree-sitter node mappings
-├── indexing/embedding-service.ts # @huggingface/transformers wrapper
-├── indexing/parallel-indexer.ts  # File parsing
-├── indexing/source-retriever.ts  # Code indexing + semantic search
-├── indexing/memory-retriever.ts  # Memory storage + semantic recall
+├── core/
+│   ├── models.ts           # Symbol, ParsedFile, CodebaseIndex, Memory, MemoryType
+│   ├── interfaces.ts       # IParser interface
+│   └── exceptions.ts       # Error hierarchy
+├── parsers/
+│   ├── treesitter-parser.ts  # Multi-language AST parsing
+│   └── language-configs.ts   # Tree-sitter node mappings (24+ languages)
+├── indexing/
+│   ├── embedding-service.ts  # @huggingface/transformers wrapper
+│   ├── parallel-indexer.ts   # File parsing
+│   ├── source-retriever.ts   # Code indexing + semantic search
+│   └── memory-retriever.ts   # Memory storage + semantic recall
 └── mcp/
-    ├── state.ts                # Global singleton (SourceRetriever + MemoryRetriever)
-    └── server.ts               # MCP server (8 tools)
+    ├── state.ts              # Global singleton (SourceRetriever + MemoryRetriever)
+    └── server.ts             # MCP server (8 tools)
 ```
 
 ## MCP Tools (8 total)
@@ -38,15 +54,6 @@ src/
 | `forget` | Delete memories by ID, type, tags, or age. **Destructive.** |
 | `memory-stats` | Memory statistics by type |
 
-## Key Differences from Python version
-
-- **Embedding Model**: `Xenova/all-MiniLM-L6-v2` (384 dims) instead of CodeRankEmbed (768 dims)
-- **Embedding Backend**: `@huggingface/transformers` (ONNX) instead of SentenceTransformers+PyTorch
-- **MCP SDK**: `@modelcontextprotocol/sdk` instead of FastMCP
-- **Tree-sitter**: Native Node.js bindings via npm packages
-- **No GPU support**: Runs on CPU only (ONNX in Node.js)
-- **ChromaDB**: Node.js client requires server for persistence (see below)
-
 ## Environment Variables
 
 | Variable | Description | Default |
@@ -56,19 +63,18 @@ src/
 
 ### ChromaDB Persistence
 Without `CHROMADB_URL`, data is stored in memory and lost on restart.
-To persist data, run ChromaDB server: `docker run -p 8000:8000 chromadb/chroma`
-then set `CHROMADB_URL=http://localhost:8000`.
+```bash
+docker run -d -p 8000:8000 chromadb/chroma
+export CHROMADB_URL=http://localhost:8000
+```
 
 ### GPU/Accelerator
-Set `CODEBAXING_DEVICE` to change compute device:
-- `cpu` (default): CPU inference, works everywhere
-- `webgpu`: WebGPU backend (experimental, uses Metal on macOS)
-- `cuda`: NVIDIA GPU (Linux/Windows only, requires CUDA)
-- `auto`: Auto-detect best available device
+- `cpu` (default): Works everywhere
+- `webgpu`: Uses Metal on macOS
+- `cuda`: NVIDIA GPU (Linux/Windows only)
+- `auto`: Auto-detect best available
 
-Example: `CODEBAXING_DEVICE=webgpu npm run dev`
-
-Note: macOS không hỗ trợ CUDA. Dùng `webgpu` để tăng tốc trên Mac.
+Note: macOS does not support CUDA. Use `webgpu` for acceleration on Mac.
 
 ## Commands
 
@@ -76,8 +82,9 @@ Note: macOS không hỗ trợ CUDA. Dùng `webgpu` để tăng tốc trên Mac.
 npm install               # Install dependencies
 npm run build             # Compile TypeScript
 npm start                 # Run MCP server
-npm run dev               # Run with tsx (no build needed)
+npm run dev               # Run with tsx (no build)
 npm test                  # Run tests
+npm run typecheck         # Type check without emit
 ```
 
 ## MCP Config
@@ -85,18 +92,19 @@ npm test                  # Run tests
 ```json
 {
   "codebaxing": {
-    "command": "node",
-    "args": ["/path/to/codebaxing-node/dist/mcp/server.js"]
+    "command": "npx",
+    "args": ["tsx", "/path/to/codebaxing/src/mcp/server.ts"],
+    "env": {
+      "CHROMADB_URL": "http://localhost:8000"
+    }
   }
 }
 ```
 
-Or with tsx (no build):
-```json
-{
-  "codebaxing": {
-    "command": "npx",
-    "args": ["tsx", "/path/to/codebaxing-node/src/mcp/server.ts"]
-  }
-}
-```
+## Key Technical Details
+
+- **Embedding Model**: `Xenova/all-MiniLM-L6-v2` (384 dims, ONNX)
+- **Model Cache**: `~/.cache/huggingface/` (~90MB)
+- **Vector DB**: ChromaDB (Node.js client requires server for persistence)
+- **Parser**: Tree-sitter with native Node.js bindings
+- **MCP SDK**: `@modelcontextprotocol/sdk`
