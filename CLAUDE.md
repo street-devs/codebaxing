@@ -59,14 +59,16 @@ Without `CHROMADB_URL`, data is stored in memory and lost on restart.
 To persist data, run ChromaDB server: `docker run -p 8000:8000 chromadb/chroma`
 then set `CHROMADB_URL=http://localhost:8000`.
 
-### GPU Acceleration
-Set `CODEBAXING_DEVICE` to enable GPU:
+### GPU/Accelerator
+Set `CODEBAXING_DEVICE` to change compute device:
 - `cpu` (default): CPU inference, works everywhere
-- `cuda`: NVIDIA GPU (requires CUDA drivers)
-- `webgpu`: WebGPU backend (experimental)
+- `webgpu`: WebGPU backend (experimental, uses Metal on macOS)
+- `cuda`: NVIDIA GPU (Linux/Windows only, requires CUDA)
 - `auto`: Auto-detect best available device
 
-Example: `CODEBAXING_DEVICE=cuda npm run dev`
+Example: `CODEBAXING_DEVICE=webgpu npm run dev`
+
+Note: macOS không hỗ trợ CUDA. Dùng `webgpu` để tăng tốc trên Mac.
 
 ## Commands
 

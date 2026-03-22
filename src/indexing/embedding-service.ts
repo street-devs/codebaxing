@@ -4,12 +4,14 @@
  * Runs ONNX models locally in Node.js — no external server needed.
  * Default model: Xenova/all-MiniLM-L6-v2 (384 dims, fast, well-supported)
  *
- * GPU Support:
+ * Device Support:
  *   Set CODEBAXING_DEVICE environment variable:
- *   - 'cpu' (default): Use CPU
- *   - 'cuda': Use NVIDIA GPU (requires CUDA)
- *   - 'webgpu': Use WebGPU (experimental, browser-like environment)
+ *   - 'cpu' (default): CPU inference, works everywhere
+ *   - 'webgpu': WebGPU backend (experimental, uses Metal on macOS)
+ *   - 'cuda': NVIDIA GPU (Linux/Windows only, requires CUDA drivers)
  *   - 'auto': Auto-detect best available device
+ *
+ * Note: macOS does not support CUDA. Use 'webgpu' for GPU acceleration on Mac.
  */
 
 import { EmbeddingError } from '../core/exceptions.js';

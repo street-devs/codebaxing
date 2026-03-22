@@ -127,17 +127,19 @@ export CHROMADB_URL=http://localhost:8000
 Enable GPU for faster embedding generation:
 
 ```bash
-# NVIDIA GPU (requires CUDA)
-export CODEBAXING_DEVICE=cuda
+# WebGPU (experimental, uses Metal on macOS)
+export CODEBAXING_DEVICE=webgpu
 
 # Auto-detect best device
 export CODEBAXING_DEVICE=auto
 
-# WebGPU (experimental)
-export CODEBAXING_DEVICE=webgpu
+# NVIDIA GPU (Linux/Windows only)
+export CODEBAXING_DEVICE=cuda
 ```
 
 Default is `cpu` which works everywhere.
+
+**Note:** macOS does not support CUDA (no NVIDIA drivers). Use `webgpu` for GPU acceleration on Mac.
 
 Metadata is stored in `.codebaxing/` folder within your project:
 - `metadata.json` - Index metadata and file timestamps
