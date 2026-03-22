@@ -150,9 +150,23 @@ export class EmbeddingService {
         console.log(`Loading embedding model: ${this.config.modelId} (device: ${deviceLabel})`);
       }
 
+      // Progress callback for model download
+      const progressCallback = this.showProgress
+        ? (progress: { status: string; file?: string; progress?: number; loaded?: number; total?: number }) => {
+            if (progress.status === 'downloading' || progress.status === 'progress') {
+              const pct = progress.progress ?? (progress.loaded && progress.total ? (progress.loaded / progress.total) * 100 : 0);
+              const fileName = progress.file ? progress.file.split('/').pop() : 'model';
+              process.stdout.write(`\r   Downloading ${fileName}: ${pct.toFixed(1)}%`);
+            } else if (progress.status === 'done') {
+              process.stdout.write('\r   Download complete.                    \n');
+            }
+          }
+        : undefined;
+
       // Build pipeline options
       const pipelineOptions: Record<string, unknown> = {
         quantized: true,
+        progress_callback: progressCallback,
       };
 
       // Configure device (Transformers.js uses 'device' option)
