@@ -226,9 +226,17 @@ async function checkChromaDBConnection(): Promise<void> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 3000); // 3 second timeout
 
-    const response = await fetch(`${chromaUrl}/api/v1/heartbeat`, {
+    // Try v2 API first, fallback to v1 for older ChromaDB versions
+    let response = await fetch(`${chromaUrl}/api/v2/heartbeat`, {
       signal: controller.signal,
     });
+
+    // Fallback to v1 if v2 not found
+    if (response.status === 404) {
+      response = await fetch(`${chromaUrl}/api/v1/heartbeat`, {
+        signal: controller.signal,
+      });
+    }
 
     clearTimeout(timeout);
 

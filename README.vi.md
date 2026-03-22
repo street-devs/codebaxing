@@ -42,7 +42,7 @@ ChromaDB là **bắt buộc** để lưu trữ index. Khởi động với Docke
 docker run -d -p 8000:8000 --name chromadb chromadb/chroma
 
 # Kiểm tra đang chạy
-curl http://localhost:8000/api/v1/heartbeat
+curl http://localhost:8000/api/v2/heartbeat
 ```
 
 ### Bước 2: Cài vào Editor
@@ -80,7 +80,7 @@ ChromaDB là **bắt buộc** để lưu trữ code index. Không có nó, Codeb
 docker run -d -p 8000:8000 --name chromadb chromadb/chroma
 
 # Kiểm tra đang chạy
-curl http://localhost:8000/api/v1/heartbeat
+curl http://localhost:8000/api/v2/heartbeat
 # Sẽ trả về: {"nanosecond heartbeat":...}
 ```
 

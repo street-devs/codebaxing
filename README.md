@@ -42,7 +42,7 @@ ChromaDB is required for persistent storage. Start it with Docker:
 docker run -d -p 8000:8000 --name chromadb chromadb/chroma
 
 # Verify it's running
-curl http://localhost:8000/api/v1/heartbeat
+curl http://localhost:8000/api/v2/heartbeat
 ```
 
 ### Step 2: Install to Your Editor
@@ -80,7 +80,7 @@ ChromaDB is **required** for storing code indexes. Without it, Codebaxing won't 
 docker run -d -p 8000:8000 --name chromadb chromadb/chroma
 
 # Verify it's running
-curl http://localhost:8000/api/v1/heartbeat
+curl http://localhost:8000/api/v2/heartbeat
 # Should return: {"nanosecond heartbeat":...}
 ```
 
