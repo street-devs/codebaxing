@@ -68,7 +68,7 @@ export function discoverFiles(
   }
 
   const files: string[] = [];
-  let skippedLargeFiles = 0;
+  const skippedFiles: { path: string; size: number }[] = [];
 
   function walk(dir: string) {
     let entries: fs.Dirent[];
@@ -92,7 +92,7 @@ export function discoverFiles(
             if (stat.size <= maxFileSize) {
               files.push(filePath);
             } else {
-              skippedLargeFiles++;
+              skippedFiles.push({ path: filePath, size: stat.size });
             }
           } catch {
             // Skip files we can't stat
@@ -104,8 +104,16 @@ export function discoverFiles(
 
   walk(codebasePath);
 
-  if (skippedLargeFiles > 0) {
-    console.log(`Skipped ${skippedLargeFiles} files larger than ${(maxFileSize / 1024 / 1024).toFixed(1)}MB`);
+  if (skippedFiles.length > 0) {
+    const maxSizeMB = (maxFileSize / 1024 / 1024).toFixed(1);
+    console.log(`\nSkipped ${skippedFiles.length} file(s) larger than ${maxSizeMB}MB:`);
+    for (const file of skippedFiles) {
+      const relativePath = path.relative(codebasePath, file.path);
+      const sizeMB = (file.size / 1024 / 1024).toFixed(2);
+      console.log(`  - ${relativePath} (${sizeMB}MB)`);
+    }
+    console.log(`\nTip: Set CODEBAXING_MAX_FILE_SIZE=<MB> to change the limit.`);
+    console.log(`     Example: CODEBAXING_MAX_FILE_SIZE=5 npx codebaxing index /path\n`);
   }
 
   return files;
