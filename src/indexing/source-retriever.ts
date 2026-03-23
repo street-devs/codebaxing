@@ -1023,27 +1023,10 @@ export class SourceRetriever {
         emit('embedding_start', { total: chunks.length });
         if (this.verbose) console.log(`Embedding ${chunks.length} chunks...`);
 
-        // Initialize worker pool if configured (local provider only)
-        const workerCount = getWorkerCount();
-        if (getConfiguredProvider() === 'local' && workerCount > 0 && !this.embeddingPool) {
-          try {
-            this.embeddingPool = getEmbeddingPool({ numWorkers: workerCount, modelName: this.embeddingModel });
-            await this.embeddingPool.initialize();
-          } catch (e) {
-            const errMsg = (e as Error).message;
-            console.error(`[codebaxing] Worker pool failed: ${errMsg}`);
-            this.embeddingPool = null;
-            if (errMsg.includes('Protobuf parsing failed') || errMsg.includes('Load model from')) {
-              const modelConfig = EMBEDDING_MODELS[this.embeddingModel];
-              const modelId = modelConfig?.modelId ?? this.embeddingModel;
-              EmbeddingService.purgeModelCache(modelId);
-            }
-          }
-        }
-
-        const embedFn = this.embeddingPool
-          ? (t: string[]) => this.embeddingPool!.embedBatch(t)
-          : (t: string[]) => this.embeddingService.embedBatch(t);
+        // Incremental reindex uses single-threaded embedding directly.
+        // Workers add IPC overhead (JSON serialize 384-dim floats) that outweighs
+        // the parallelism benefit for typical incremental batch sizes.
+        const embedFn = (t: string[]) => this.embeddingService.embedBatch(t);
 
         const batchSize = 800;
         const embedBatchSize = getEmbedBatchSize();
