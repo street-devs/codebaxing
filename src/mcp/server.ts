@@ -28,6 +28,8 @@ import {
   hasValidIndex,
   ensureLoaded,
   isIndexing,
+  isLegacyIndex,
+  LEGACY_INDEX_WARNING,
   saveConfig,
 } from './state.js';
 
@@ -404,6 +406,13 @@ async function loadExistingIndex(
   state: ReturnType<typeof getState>,
   embeddingModel: string
 ): Promise<Record<string, unknown>> {
+  if (isLegacyIndex(paths)) {
+    return {
+      error: LEGACY_INDEX_WARNING,
+      legacy: true,
+    };
+  }
+
   const retriever = new SourceRetriever({
     codebasePath,
     embeddingModel,
@@ -434,6 +443,13 @@ async function incrementalReindex(
   state: ReturnType<typeof getState>,
   embeddingModel: string
 ): Promise<Record<string, unknown>> {
+  if (isLegacyIndex(paths)) {
+    return {
+      error: LEGACY_INDEX_WARNING,
+      legacy: true,
+    };
+  }
+
   const retriever = new SourceRetriever({
     codebasePath,
     embeddingModel,

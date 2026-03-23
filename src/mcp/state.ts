@@ -96,6 +96,24 @@ export function hasValidIndex(paths: CodebaxingPaths): boolean {
   );
 }
 
+/**
+ * Check if an existing index uses the old absolute-path format.
+ * Old format: metadata.json exists but config.json does not.
+ */
+export function isLegacyIndex(paths: CodebaxingPaths): boolean {
+  return (
+    fs.existsSync(paths.metadataPath) &&
+    !fs.existsSync(paths.configPath)
+  );
+}
+
+const LEGACY_INDEX_WARNING =
+  'Existing index uses legacy absolute-path format. ' +
+  'Search results may be incorrect. ' +
+  'Please re-index with mode=full to upgrade: index(path="...", mode="full")';
+
+export { LEGACY_INDEX_WARNING };
+
 // ─── Auto-loading ────────────────────────────────────────────────────────────
 
 const bgIndexingRunning = new Map<string, boolean>();

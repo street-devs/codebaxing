@@ -210,7 +210,9 @@ async function runIndex(codebasePath: string): Promise<void> {
       persistPath: paths.chromaPath,
     });
 
-    if (hasExisting) {
+    const isLegacy = hasExisting && !fs.existsSync(paths.configPath);
+
+    if (hasExisting && !isLegacy) {
       // Incremental reindex - only process changed files
       console.log('📋 Existing index found. Running incremental update...\n');
 
@@ -237,7 +239,11 @@ async function runIndex(codebasePath: string): Promise<void> {
       }
     } else {
       // Full index
-      console.log('📋 No existing index. Running full index...\n');
+      if (isLegacy) {
+        console.log('⚠️  Existing index uses legacy format (absolute paths). Running full re-index to upgrade...\n');
+      } else {
+        console.log('📋 No existing index. Running full index...\n');
+      }
       await retriever.indexCodebase();
     }
 
