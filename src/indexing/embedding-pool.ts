@@ -1,13 +1,15 @@
 /**
- * Worker pool for parallel embedding processing.
+ * Process pool for parallel embedding.
  *
- * Each worker loads its own embedding model, enabling true parallelism
- * since ONNX inference blocks the thread.
+ * Uses child_process.fork() instead of worker_threads to avoid ONNX WASM
+ * conflicts. Each child process gets its own V8 isolate and WASM memory,
+ * enabling true parallel ONNX inference.
  */
 
-import { Worker } from 'node:worker_threads';
+import { fork, type ChildProcess } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import fs from 'node:fs';
 import os from 'node:os';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -24,50 +26,71 @@ interface PendingTask {
 }
 
 export class EmbeddingWorkerPool {
-  private workers: Worker[] = [];
+  private workers: ChildProcess[] = [];
   private taskQueue: Array<{ texts: string[]; resolve: (e: number[][]) => void; reject: (e: Error) => void }> = [];
   private pendingTasks: Map<number, PendingTask> = new Map();
   private workerBusy: boolean[] = [];
   private nextTaskId = 0;
   private modelName: string;
+  private numWorkers: number;
   private initialized = false;
   private initPromise: Promise<void> | null = null;
 
   constructor(options: PoolOptions = {}) {
-    const numWorkers = options.numWorkers ?? Math.min(os.cpus().length, 4);
+    this.numWorkers = options.numWorkers ?? Math.min(os.cpus().length, 4);
     this.modelName = options.modelName ?? 'all-MiniLM-L6-v2';
 
-    for (let i = 0; i < numWorkers; i++) {
+    for (let i = 0; i < this.numWorkers; i++) {
       this.workerBusy.push(false);
     }
   }
 
-  private async createWorker(index: number): Promise<Worker> {
-    // Use tsx to run TypeScript workers directly
-    const workerPath = path.join(__dirname, 'embedding-worker.ts');
+  private createWorker(index: number): Promise<ChildProcess> {
+    // Use compiled .js in production, .ts with tsx in development
+    const jsWorkerPath = path.join(__dirname, 'embedding-worker.js');
+    const tsWorkerPath = path.join(__dirname, 'embedding-worker.ts');
+    const useCompiledJs = fs.existsSync(jsWorkerPath);
+    const workerPath = useCompiledJs ? jsWorkerPath : tsWorkerPath;
 
-    // Find tsx path - it might be in local node_modules or global
-    const tsxPath = path.join(__dirname, '../../node_modules/tsx/dist/esm/index.mjs');
+    // Build execArgv for tsx if needed
+    const execArgv: string[] = [];
+    if (!useCompiledJs) {
+      const possibleTsxPaths = [
+        path.join(__dirname, '../../node_modules/tsx/dist/esm/index.mjs'),
+        path.join(__dirname, '../../../node_modules/tsx/dist/esm/index.mjs'),
+      ];
+      for (const p of possibleTsxPaths) {
+        if (fs.existsSync(p)) {
+          execArgv.push('--import', p);
+          break;
+        }
+      }
+    }
 
     return new Promise((resolve, reject) => {
-      const worker = new Worker(workerPath, {
-        workerData: { modelName: this.modelName },
-        execArgv: ['--import', tsxPath],
+      const child = fork(workerPath, [this.modelName, String(this.numWorkers)], {
+        execArgv,
+        stdio: ['pipe', 'pipe', 'pipe', 'ipc'],
+        env: { ...process.env },
       });
+
+      // Suppress worker stderr (model loading noise)
+      child.stderr?.on('data', () => {});
+      child.stdout?.on('data', () => {});
 
       let ready = false;
       const timeout = setTimeout(() => {
         if (!ready) {
-          worker.terminate();
+          child.kill();
           reject(new Error(`Worker ${index} initialization timeout`));
         }
-      }, 120000); // 2 min timeout for model loading
+      }, 120000);
 
-      worker.on('message', (msg) => {
+      child.on('message', (msg: any) => {
         if (msg.type === 'pong' && !ready) {
           ready = true;
           clearTimeout(timeout);
-          resolve(worker);
+          resolve(child);
         } else if (msg.type === 'result' || msg.type === 'error') {
           const task = this.pendingTasks.get(msg.id);
           if (task) {
@@ -83,17 +106,24 @@ export class EmbeddingWorkerPool {
         }
       });
 
-      worker.on('error', (err) => {
+      child.on('error', (err) => {
         clearTimeout(timeout);
         if (!ready) {
           reject(err);
         } else {
-          console.error(`Worker ${index} error:`, err);
+          console.error(`[codebaxing] Worker ${index} error:`, err.message);
         }
       });
 
-      // Ping to check if worker is ready
-      worker.postMessage({ type: 'ping' });
+      child.on('exit', (code) => {
+        if (!ready) {
+          clearTimeout(timeout);
+          reject(new Error(`Worker ${index} exited with code ${code}`));
+        }
+      });
+
+      // Ping to check if worker is responsive
+      child.send({ type: 'ping' });
     });
   }
 
@@ -102,20 +132,23 @@ export class EmbeddingWorkerPool {
     if (this.initPromise) return this.initPromise;
 
     this.initPromise = (async () => {
-      const numWorkers = this.workerBusy.length;
-      console.log(`[codebaxing] Initializing ${numWorkers} embedding workers...`);
+      console.log(`[codebaxing] Initializing ${this.numWorkers} embedding workers...`);
 
       const workerPromises = [];
-      for (let i = 0; i < numWorkers; i++) {
+      for (let i = 0; i < this.numWorkers; i++) {
         workerPromises.push(this.createWorker(i));
       }
 
       try {
         this.workers = await Promise.all(workerPromises);
         this.initialized = true;
-        console.log(`[codebaxing] ${numWorkers} workers ready`);
+        console.log(`[codebaxing] ${this.numWorkers} workers ready`);
       } catch (e) {
-        console.error('[codebaxing] Failed to initialize workers, falling back to single-threaded');
+        // Clean up any workers that did start
+        for (const w of this.workers) {
+          try { w.kill(); } catch {}
+        }
+        this.workers = [];
         throw e;
       }
     })();
@@ -133,7 +166,7 @@ export class EmbeddingWorkerPool {
 
       this.workerBusy[freeWorkerIdx] = true;
       this.pendingTasks.set(taskId, { resolve: task.resolve, reject: task.reject });
-      this.workers[freeWorkerIdx].postMessage({ type: 'embed', texts: task.texts, id: taskId });
+      this.workers[freeWorkerIdx].send({ type: 'embed', texts: task.texts, id: taskId });
     }
   }
 
@@ -149,9 +182,12 @@ export class EmbeddingWorkerPool {
   }
 
   async terminate(): Promise<void> {
-    await Promise.all(this.workers.map(w => w.terminate()));
+    for (const w of this.workers) {
+      try { w.kill(); } catch {}
+    }
     this.workers = [];
     this.initialized = false;
+    this.initPromise = null;
   }
 
   get isInitialized(): boolean {

@@ -60,10 +60,13 @@ async function importTransformers() {
     ?? path.join(os.homedir(), '.cache', 'codebaxing', 'models');
   env.cacheDir = cacheDir;
 
-  // Optimize ONNX Runtime for multi-threaded inference
-  // Use all available CPU cores for parallel WASM execution
+  // Configure ONNX thread count.
+  // When running in worker processes, use 1 thread (parallelism via multiple processes).
+  // Otherwise use all CPU cores for single-process throughput.
+  const onnxThreadsEnv = process.env.CODEBAXING_ONNX_THREADS;
   const numCpus = os.cpus().length;
-  env.backends.onnx.wasm.numThreads = Math.min(numCpus, 8);
+  const onnxThreads = onnxThreadsEnv ? parseInt(onnxThreadsEnv, 10) : Math.min(numCpus, 8);
+  env.backends.onnx.wasm.numThreads = onnxThreads;
 
   transformersLoaded = true;
 }
