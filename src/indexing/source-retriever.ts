@@ -106,7 +106,7 @@ function getEmbedBatchSize(): number {
     const val = parseInt(envVal, 10);
     if (!isNaN(val) && val > 0) return val;
   }
-  return 800; // Default 800 texts per embed batch
+  return 200; // Default 200 texts per embed sub-batch (enables parallelism across workers)
 }
 
 // Parallel batches: how many batches to process concurrently
