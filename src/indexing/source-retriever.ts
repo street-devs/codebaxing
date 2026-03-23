@@ -648,7 +648,7 @@ export class SourceRetriever {
       }
 
       // Store in ChromaDB (upsert for crash-resume support)
-      const chromaBatchSize = 500;
+      const chromaBatchSize = 2000;
       for (let i = 0; i < chunksToStore.length; i += chromaBatchSize) {
         const end = Math.min(i + chromaBatchSize, chunksToStore.length);
         const subChunks = chunksToStore.slice(i, end);
