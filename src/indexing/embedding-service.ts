@@ -22,8 +22,10 @@ import { EmbeddingError } from '../core/exceptions.js';
 // ─── Device Configuration ─────────────────────────────────────────────────────
 
 export type DeviceType = 'cpu' | 'cuda' | 'webgpu' | 'auto';
+export type DType = 'fp32' | 'fp16' | 'q8' | 'q4';
 
 const VALID_DEVICES: DeviceType[] = ['cpu', 'cuda', 'webgpu', 'auto'];
+const VALID_DTYPES: DType[] = ['fp32', 'fp16', 'q8', 'q4'];
 
 /**
  * Get the configured device from environment variable.
@@ -35,6 +37,18 @@ export function getConfiguredDevice(): DeviceType {
     return envDevice as DeviceType;
   }
   return 'cpu';
+}
+
+/**
+ * Get the configured dtype from environment variable.
+ * Defaults to 'q8' for best speed/quality tradeoff (~3x faster than fp32).
+ */
+export function getConfiguredDtype(): DType {
+  const envDtype = process.env.CODEBAXING_DTYPE?.toLowerCase();
+  if (envDtype && VALID_DTYPES.includes(envDtype as DType)) {
+    return envDtype as DType;
+  }
+  return 'q8';
 }
 
 // Lazy import transformers (heavy dependency)
@@ -109,6 +123,7 @@ export class EmbeddingService {
   private modelName: string;
   private config: EmbeddingModelConfig;
   private device: DeviceType;
+  private dtype: DType;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private extractor: any = null;
   private loading: Promise<void> | null = null;
@@ -132,11 +147,12 @@ export class EmbeddingService {
 
   constructor(
     modelName: string = DEFAULT_MODEL,
-    options: { showProgress?: boolean; device?: DeviceType; disableCachePurge?: boolean } = {}
+    options: { showProgress?: boolean; device?: DeviceType; dtype?: DType; disableCachePurge?: boolean } = {}
   ) {
     this.modelName = modelName;
     this.showProgress = options.showProgress ?? false;
     this.device = options.device ?? getConfiguredDevice();
+    this.dtype = options.dtype ?? getConfiguredDtype();
     this.disableCachePurge = options.disableCachePurge ?? false;
 
     if (modelName in EMBEDDING_MODELS) {
@@ -172,7 +188,7 @@ export class EmbeddingService {
 
         const deviceLabel = this.device === 'cpu' ? 'CPU' : this.device.toUpperCase();
         // Always log model loading to stderr so MCP servers and CLI both show it
-        console.error(`[codebaxing] Loading embedding model: ${this.config.modelId} (device: ${deviceLabel}, cache: ${env.cacheDir})`);
+        console.error(`[codebaxing] Loading embedding model: ${this.config.modelId} (device: ${deviceLabel}, dtype: ${this.dtype}, cache: ${env.cacheDir})`);
 
         // Progress callback for model download
         const progressCallback = (progress: { status: string; file?: string; progress?: number; loaded?: number; total?: number }) => {
@@ -186,8 +202,9 @@ export class EmbeddingService {
         };
 
         // Build pipeline options
+        // Use dtype instead of deprecated quantized flag (Transformers.js v3)
         const pipelineOptions: Record<string, unknown> = {
-          quantized: true,
+          dtype: this.dtype,
           progress_callback: progressCallback,
         };
 
@@ -230,7 +247,7 @@ export class EmbeddingService {
             );
             this.device = 'cpu';
             this.extractor = await pipeline('feature-extraction', this.config.modelId, {
-              quantized: true,
+              dtype: this.dtype,
             });
           } else if (this.modelName !== DEFAULT_MODEL) {
             // Fall back to default model if custom model fails
@@ -240,7 +257,7 @@ export class EmbeddingService {
             );
             this.config = { ...EMBEDDING_MODELS[DEFAULT_MODEL] };
             this.extractor = await pipeline('feature-extraction', this.config.modelId, {
-              quantized: true,
+              dtype: this.dtype,
             });
           } else {
             throw new EmbeddingError(`Failed to load embedding model: ${errorMsg}`);
@@ -248,7 +265,7 @@ export class EmbeddingService {
         }
 
         const actualDevice = this.device === 'cpu' ? 'CPU' : this.device.toUpperCase();
-        console.error(`[codebaxing] Model loaded: ${this.config.modelId} (${this.config.dimensions} dims, ${actualDevice})`);
+        console.error(`[codebaxing] Model loaded: ${this.config.modelId} (${this.config.dimensions} dims, ${actualDevice}, ${this.dtype})`);
       } finally {
         this.loading = null;
       }
