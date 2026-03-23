@@ -200,8 +200,8 @@ async function runIndex(codebasePath: string): Promise<void> {
     // Ensure .codebaxing directory exists
     fs.mkdirSync(paths.codebaxingDir, { recursive: true });
 
-    // Save config with basePath
-    fs.writeFileSync(paths.configPath, JSON.stringify({ basePath: absolutePath }, null, 2) + '\n');
+    // Check legacy BEFORE creating config.json
+    const isLegacy = hasExisting && !fs.existsSync(paths.configPath);
 
     const retriever = new SourceRetriever({
       codebasePath: absolutePath,
@@ -209,8 +209,6 @@ async function runIndex(codebasePath: string): Promise<void> {
       verbose: true,
       persistPath: paths.chromaPath,
     });
-
-    const isLegacy = hasExisting && !fs.existsSync(paths.configPath);
 
     if (hasExisting && !isLegacy) {
       // Incremental reindex - only process changed files
@@ -238,7 +236,9 @@ async function runIndex(codebasePath: string): Promise<void> {
         return;
       }
     } else {
-      // Full index
+      // Full index — save config before indexing
+      fs.writeFileSync(paths.configPath, JSON.stringify({ basePath: absolutePath }, null, 2) + '\n');
+
       if (isLegacy) {
         console.log('⚠️  Existing index uses legacy format (absolute paths). Running full re-index to upgrade...\n');
       } else {
