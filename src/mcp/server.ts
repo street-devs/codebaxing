@@ -132,7 +132,8 @@ Examples:
     const state = getState();
 
     if (args.path) {
-      await ensureLoaded(state, args.path);
+      // Don't auto-index, just try to load existing index
+      await ensureLoaded(state, args.path, 'all-MiniLM-L6-v2', false);
     }
 
     if (!state.isLoaded) {
@@ -142,7 +143,10 @@ Examples:
           message: 'Background indexing in progress. Results will be available on next call.',
         }) }] };
       }
-      return { content: [{ type: 'text' as const, text: JSON.stringify({ error: "No codebase loaded. Use 'index' first." }) }] };
+      return { content: [{ type: 'text' as const, text: JSON.stringify({
+        error: "No index found for this codebase.",
+        hint: "Run index(path=\"/your/codebase\") first to index the codebase. This only needs to be done once.",
+      }) }] };
     }
 
     try {

@@ -81,7 +81,8 @@ export function isIndexing(codePath: string): boolean {
 export async function ensureLoaded(
   state: MCPSessionState,
   codePath?: string,
-  embeddingModel: string = 'all-MiniLM-L6-v2'
+  embeddingModel: string = 'all-MiniLM-L6-v2',
+  autoIndex: boolean = false // Don't auto-index by default
 ): Promise<boolean> {
   if (!codePath) return state.isLoaded;
 
@@ -90,15 +91,17 @@ export async function ensureLoaded(
 
   // Already loaded for this path
   if (state.isLoaded && state.codebasePath === codebasePath) {
-    // Kick off background reindex
+    // Kick off background incremental reindex (fast, only updates changed files)
     backgroundIncrementalReindex(state, codebasePath, paths, embeddingModel);
     return true;
   }
 
   // Check if valid index exists on disk
   if (!hasValidIndex(paths)) {
-    // No index — kick off background full index
-    backgroundFullIndex(state, codebasePath, paths, embeddingModel);
+    // No index exists - only auto-index if explicitly requested
+    if (autoIndex) {
+      backgroundFullIndex(state, codebasePath, paths, embeddingModel);
+    }
     return false;
   }
 
@@ -107,12 +110,12 @@ export async function ensureLoaded(
     state.memoryRetriever = null;
   }
 
-  // Load index
+  // Load existing index
   if (!await loadIndexIntoState(state, codebasePath, paths, embeddingModel)) {
     return false;
   }
 
-  // Kick off background reindex
+  // Kick off background incremental reindex (fast)
   backgroundIncrementalReindex(state, codebasePath, paths, embeddingModel);
   return true;
 }
