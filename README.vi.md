@@ -88,18 +88,38 @@ Sau khi cài, AI agents có thể dùng các tools:
 
 ## Cấu Hình
 
+### Cloud Embedding (Nhanh nhất)
+
+Dùng OpenAI hoặc Voyage để index nhanh ~25x:
+
+```bash
+# OpenAI (text-embedding-3-small, 384 dims)
+CODEBAXING_EMBEDDING_PROVIDER=openai OPENAI_API_KEY=sk-... npx codebaxing@latest index /path
+
+# Voyage (voyage-code-3, 1024 dims, tối ưu cho code)
+CODEBAXING_EMBEDDING_PROVIDER=voyage VOYAGE_API_KEY=va-... npx codebaxing@latest index /path
+```
+
+> **Lưu ý:** Chuyển đổi giữa local và cloud cần re-index do khác dimension.
+
 ### Biến Môi Trường
 
 | Biến | Mô tả | Mặc định |
 |------|-------|----------|
 | `CHROMADB_URL` | URL ChromaDB server | `http://localhost:8000` |
-| `CODEBAXING_DEVICE` | Compute: `cpu`, `cuda` | `cpu` |
-| `CODEBAXING_WORKERS` | Worker threads cho embedding song song (0=tắt, 1-8) | `2` |
+| `CODEBAXING_EMBEDDING_PROVIDER` | Backend embedding: `local`, `openai`, `voyage` | `local` |
+| `CODEBAXING_DEVICE` | Compute device (chỉ local): `cpu`, `cuda` | `cpu` |
+| `CODEBAXING_DTYPE` | Quantization (chỉ local): `fp32`, `fp16`, `q8`, `q4` | `q8` |
+| `CODEBAXING_WORKERS` | Worker threads cho embedding (chỉ local, 0=tắt) | `2` |
 | `CODEBAXING_MAX_FILE_SIZE` | Kích thước file tối đa (MB) | `1` |
-| `CODEBAXING_MAX_CHUNKS` | Số chunks tối đa | `100000` |
+| `CODEBAXING_MAX_CHUNKS` | Số chunks tối đa | `500000` |
 | `CODEBAXING_FILES_PER_BATCH` | Files mỗi batch (thấp = ít RAM) | `100` |
 | `CODEBAXING_PARALLEL_BATCHES` | Số batches chạy song song | `3` |
 | `CODEBAXING_METADATA_SAVE_INTERVAL` | Lưu tiến trình mỗi N batches | `10` |
+| `CODEBAXING_OPENAI_API_KEY` | OpenAI API key (hoặc dùng `OPENAI_API_KEY`) | - |
+| `CODEBAXING_VOYAGE_API_KEY` | Voyage API key (hoặc dùng `VOYAGE_API_KEY`) | - |
+| `CODEBAXING_EMBEDDING_MODEL` | Override tên model embedding | mặc định theo provider |
+| `CODEBAXING_EMBEDDING_DIMENSIONS` | Override số dimensions | mặc định theo provider |
 
 ### Cấu Hình Editor Thủ Công
 
@@ -162,10 +182,15 @@ Python, JavaScript, TypeScript, Go, Rust, Java, C/C++, C#, Ruby, PHP, Kotlin, Sw
 
 | Component | Công nghệ |
 |-----------|-----------|
-| Embedding Model | `all-MiniLM-L6-v2` (384 dimensions) |
+| Local Embedding | `all-MiniLM-L6-v2` (384 dims, ONNX, q8 quantized) |
+| Cloud Embedding | OpenAI `text-embedding-3-small` hoặc Voyage `voyage-code-3` |
 | Vector Database | ChromaDB |
-| Code Parser | Tree-sitter |
+| Code Parser | Tree-sitter (28 ngôn ngữ) |
 | MCP SDK | `@modelcontextprotocol/sdk` |
+
+**Local mode**: Model tải từ HuggingFace lần đầu, cache tại `~/.cache/codebaxing/models/`. Dùng q8 quantization (~3x nhanh hơn fp32). Không cần mạng sau lần đầu.
+
+**Cloud mode**: Gửi code chunks đến OpenAI/Voyage API. ~25x nhanh hơn local CPU. Cần API key.
 
 ## License
 
