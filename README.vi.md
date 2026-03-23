@@ -38,6 +38,8 @@ npx codebaxing@latest index /path/to/your/project
 
 Tạo folder `.codebaxing/` chứa index. Chỉ cần làm một lần cho mỗi project.
 
+> **Lưu ý về tốc độ:** Embedding local khá chậm (~4 phút cho ~4,000 files). Để index nhanh hơn, dùng Gemini embedding (miễn phí) — xem phần [Cloud Embedding](#cloud-embedding-nhanh-nhất) bên dưới.
+
 ### 3. Cài MCP Server cho AI Editors
 
 ```bash
@@ -90,10 +92,10 @@ Sau khi cài, AI agents có thể dùng các tools:
 
 ### Cloud Embedding (Nhanh nhất)
 
-Dùng cloud API để index nhanh ~25x:
+Embedding local chạy trên CPU và khá chậm cho codebase lớn (~4 phút cho ~4,000 files). Cloud embedding nhanh hơn **~25x** và được khuyến khích cho project từ 1,000+ files.
 
 ```bash
-# Gemini (MIỄN PHÍ - khuyên dùng)
+# Gemini (MIỄN PHÍ - khuyên dùng, 1500 RPM free tier)
 CODEBAXING_EMBEDDING_PROVIDER=gemini GEMINI_API_KEY=... npx codebaxing@latest index /path
 
 # OpenAI (text-embedding-3-small, 384 dims)
@@ -103,7 +105,14 @@ CODEBAXING_EMBEDDING_PROVIDER=openai OPENAI_API_KEY=sk-... npx codebaxing@latest
 CODEBAXING_EMBEDDING_PROVIDER=voyage VOYAGE_API_KEY=va-... npx codebaxing@latest index /path
 ```
 
-> **Lưu ý:** Chuyển đổi giữa local và cloud cần re-index do khác dimension.
+| Provider | Model | Tốc độ | Chi phí |
+|----------|-------|--------|---------|
+| **Gemini** | `text-embedding-004` (768 dims) | ~10,000 texts/s | Miễn phí (1500 RPM) |
+| **OpenAI** | `text-embedding-3-small` (384 dims) | ~10,000 texts/s | ~$0.02 / 1M tokens |
+| **Voyage** | `voyage-code-3` (1024 dims) | ~10,000 texts/s | ~$0.06 / 1M tokens |
+| **Local** | `all-MiniLM-L6-v2` (384 dims) | ~200 texts/s | Miễn phí (CPU) |
+
+> **Lưu ý:** Chuyển đổi giữa các provider cần re-index (`npx codebaxing@latest index <path>`) do khác dimension.
 
 ### Biến Môi Trường
 

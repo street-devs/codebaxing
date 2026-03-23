@@ -38,6 +38,8 @@ npx codebaxing@latest index /path/to/your/project
 
 This creates a `.codebaxing/` folder with the index. Only needs to be done once per project.
 
+> **Performance note:** Local embedding is slow (~4 min for ~4,000 files). For faster indexing, use Gemini embedding (free) — see [Cloud Embedding](#cloud-embedding-fastest) below.
+
 ### 3. Install MCP Server for AI Editors
 
 ```bash
@@ -90,10 +92,10 @@ After installing, AI agents can use these tools:
 
 ### Cloud Embedding (Fastest)
 
-Use cloud APIs for ~25x faster indexing:
+Local embedding runs on CPU and can be slow for large codebases (~4 min for ~4,000 files). Cloud embedding is **~25x faster** and recommended for any project with 1,000+ files.
 
 ```bash
-# Gemini (FREE - recommended)
+# Gemini (FREE - recommended, 1500 RPM free tier)
 CODEBAXING_EMBEDDING_PROVIDER=gemini GEMINI_API_KEY=... npx codebaxing@latest index /path
 
 # OpenAI (text-embedding-3-small, 384 dims)
@@ -103,7 +105,14 @@ CODEBAXING_EMBEDDING_PROVIDER=openai OPENAI_API_KEY=sk-... npx codebaxing@latest
 CODEBAXING_EMBEDDING_PROVIDER=voyage VOYAGE_API_KEY=va-... npx codebaxing@latest index /path
 ```
 
-> **Note:** Switching between local and cloud providers requires full re-index due to dimension differences.
+| Provider | Model | Speed | Cost |
+|----------|-------|-------|------|
+| **Gemini** | `text-embedding-004` (768 dims) | ~10,000 texts/sec | Free (1500 RPM) |
+| **OpenAI** | `text-embedding-3-small` (384 dims) | ~10,000 texts/sec | ~$0.02 / 1M tokens |
+| **Voyage** | `voyage-code-3` (1024 dims) | ~10,000 texts/sec | ~$0.06 / 1M tokens |
+| **Local** | `all-MiniLM-L6-v2` (384 dims) | ~200 texts/sec | Free (CPU) |
+
+> **Note:** Switching between providers requires full re-index (`npx codebaxing@latest index <path>`) due to dimension differences.
 
 ### Environment Variables
 
