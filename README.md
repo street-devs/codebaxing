@@ -90,9 +90,12 @@ After installing, AI agents can use these tools:
 
 ### Cloud Embedding (Fastest)
 
-Use OpenAI or Voyage for ~25x faster indexing:
+Use cloud APIs for ~25x faster indexing:
 
 ```bash
+# Gemini (FREE - recommended)
+CODEBAXING_EMBEDDING_PROVIDER=gemini GEMINI_API_KEY=... npx codebaxing@latest index /path
+
 # OpenAI (text-embedding-3-small, 384 dims)
 CODEBAXING_EMBEDDING_PROVIDER=openai OPENAI_API_KEY=sk-... npx codebaxing@latest index /path
 
@@ -107,7 +110,7 @@ CODEBAXING_EMBEDDING_PROVIDER=voyage VOYAGE_API_KEY=va-... npx codebaxing@latest
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `CHROMADB_URL` | ChromaDB server URL | `http://localhost:8000` |
-| `CODEBAXING_EMBEDDING_PROVIDER` | Embedding backend: `local`, `openai`, `voyage` | `local` |
+| `CODEBAXING_EMBEDDING_PROVIDER` | Embedding backend: `local`, `gemini`, `openai`, `voyage` | `local` |
 | `CODEBAXING_DEVICE` | Compute device (local only): `cpu`, `cuda` | `cpu` |
 | `CODEBAXING_DTYPE` | Model quantization (local only): `fp32`, `fp16`, `q8`, `q4` | `q8` |
 | `CODEBAXING_WORKERS` | Worker threads for parallel embedding (local only, 0=off) | `2` |
@@ -119,6 +122,7 @@ CODEBAXING_EMBEDDING_PROVIDER=voyage VOYAGE_API_KEY=va-... npx codebaxing@latest
 | `CODEBAXING_MODEL_CACHE` | Model cache directory (local only) | `~/.cache/codebaxing/models` |
 | `CODEBAXING_OPENAI_API_KEY` | OpenAI API key (or use `OPENAI_API_KEY`) | - |
 | `CODEBAXING_VOYAGE_API_KEY` | Voyage API key (or use `VOYAGE_API_KEY`) | - |
+| `CODEBAXING_GEMINI_API_KEY` | Gemini API key (or use `GEMINI_API_KEY`) | - |
 | `CODEBAXING_EMBEDDING_MODEL` | Override embedding model name | per-provider default |
 | `CODEBAXING_EMBEDDING_DIMENSIONS` | Override embedding dimensions | per-provider default |
 | `CODEBAXING_EMBEDDING_BASE_URL` | Custom API endpoint for cloud providers | provider default |
@@ -185,7 +189,7 @@ Python, JavaScript, TypeScript, Go, Rust, Java, C/C++, C#, Ruby, PHP, Kotlin, Sw
 | Component | Technology |
 |-----------|------------|
 | Local Embedding | `all-MiniLM-L6-v2` (384 dims, ONNX, q8 quantized) |
-| Cloud Embedding | OpenAI `text-embedding-3-small` or Voyage `voyage-code-3` |
+| Cloud Embedding | Gemini `text-embedding-004` (free), OpenAI, or Voyage |
 | Model Cache | `~/.cache/codebaxing/models/` (local only, downloaded once) |
 | Vector Database | ChromaDB |
 | Code Parser | Tree-sitter (28 languages) |

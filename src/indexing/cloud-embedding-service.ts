@@ -10,7 +10,7 @@ import { EmbeddingError } from '../core/exceptions.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-export type CloudProvider = 'openai' | 'voyage';
+export type CloudProvider = 'openai' | 'voyage' | 'gemini';
 
 export interface CloudEmbeddingConfig {
   provider: CloudProvider;
@@ -41,6 +41,12 @@ const PROVIDER_DEFAULTS: Record<CloudProvider, ProviderDefaults> = {
     dimensions: 1024,
     batchSize: 128,
     baseUrl: 'https://api.voyageai.com/v1/embeddings',
+  },
+  gemini: {
+    model: 'text-embedding-004',
+    dimensions: 768,
+    batchSize: 100, // Gemini batch limit: 100 texts per request
+    baseUrl: 'https://generativelanguage.googleapis.com/v1',
   },
 };
 
@@ -149,16 +155,22 @@ export class CloudEmbeddingService implements IEmbeddingService {
   }
 
   private async callApi(texts: string[], retries = 3): Promise<number[][]> {
+    if (this.provider === 'gemini') {
+      return this.callGeminiApi(texts, retries);
+    }
+    return this.callOpenAiCompatibleApi(texts, retries);
+  }
+
+  // OpenAI and Voyage share the same API format
+  private async callOpenAiCompatibleApi(texts: string[], retries: number): Promise<number[][]> {
     const body: Record<string, unknown> = {
       model: this.model,
       input: texts,
     };
 
-    // OpenAI supports dimension reduction
     if (this.provider === 'openai' && this._dimensions) {
       body.dimensions = this._dimensions;
     }
-    // Voyage uses input_type
     if (this.provider === 'voyage') {
       body.input_type = 'document';
     }
@@ -199,7 +211,6 @@ export class CloudEmbeddingService implements IEmbeddingService {
           this.stats.totalTokens += json.usage.total_tokens ?? json.usage.prompt_tokens ?? 0;
         }
 
-        // Sort by index to maintain order
         const sorted = json.data.sort((a, b) => a.index - b.index);
         return sorted.map(d => d.embedding);
       } catch (e) {
@@ -214,6 +225,61 @@ export class CloudEmbeddingService implements IEmbeddingService {
     }
 
     throw new EmbeddingError(`${this.provider} API failed after ${retries} retries`);
+  }
+
+  // Gemini uses a different API format (batchEmbedContents)
+  private async callGeminiApi(texts: string[], retries: number): Promise<number[][]> {
+    const url = `${this.baseUrl}/models/${this.model}:batchEmbedContents?key=${this.apiKey}`;
+    const body = {
+      requests: texts.map(text => ({
+        model: `models/${this.model}`,
+        content: { parts: [{ text }] },
+        taskType: 'RETRIEVAL_DOCUMENT',
+        outputDimensionality: this._dimensions,
+      })),
+    };
+
+    for (let attempt = 0; attempt < retries; attempt++) {
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+
+        if (response.status === 429 || response.status >= 500) {
+          const retryAfter = response.headers.get('retry-after');
+          const waitMs = retryAfter ? parseInt(retryAfter, 10) * 1000 : Math.pow(2, attempt) * 1000;
+          console.error(`[codebaxing] Gemini rate limited (${response.status}), retrying in ${waitMs}ms...`);
+          await new Promise(r => setTimeout(r, waitMs));
+          continue;
+        }
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new EmbeddingError(
+            `Gemini API error (${response.status}): ${errorText.slice(0, 200)}`
+          );
+        }
+
+        const json = await response.json() as {
+          embeddings: Array<{ values: number[] }>;
+        };
+
+        this.stats.apiCalls++;
+        return json.embeddings.map(e => e.values);
+      } catch (e) {
+        if (e instanceof EmbeddingError) throw e;
+        if (attempt === retries - 1) {
+          throw new EmbeddingError(`Gemini API call failed: ${(e as Error).message}`);
+        }
+        const waitMs = Math.pow(2, attempt) * 1000;
+        console.error(`[codebaxing] Gemini error, retrying in ${waitMs}ms: ${(e as Error).message}`);
+        await new Promise(r => setTimeout(r, waitMs));
+      }
+    }
+
+    throw new EmbeddingError(`Gemini API failed after ${retries} retries`);
   }
 
   getStats(): Record<string, unknown> {

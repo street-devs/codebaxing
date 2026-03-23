@@ -12,9 +12,9 @@ import { CloudEmbeddingService, type CloudProvider } from './cloud-embedding-ser
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-export type EmbeddingProvider = 'local' | 'openai' | 'voyage';
+export type EmbeddingProvider = 'local' | 'openai' | 'voyage' | 'gemini';
 
-const VALID_PROVIDERS: EmbeddingProvider[] = ['local', 'openai', 'voyage'];
+const VALID_PROVIDERS: EmbeddingProvider[] = ['local', 'openai', 'voyage', 'gemini'];
 
 // ─── Configuration ───────────────────────────────────────────────────────────
 
@@ -81,6 +81,13 @@ function getApiKey(provider: EmbeddingProvider): string {
     if (!apiKey) {
       throw new EmbeddingError(
         'Voyage API key required. Set CODEBAXING_VOYAGE_API_KEY or VOYAGE_API_KEY environment variable.'
+      );
+    }
+  } else if (provider === 'gemini') {
+    apiKey = process.env.CODEBAXING_GEMINI_API_KEY ?? process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      throw new EmbeddingError(
+        'Gemini API key required. Set CODEBAXING_GEMINI_API_KEY or GEMINI_API_KEY environment variable.'
       );
     }
   } else {

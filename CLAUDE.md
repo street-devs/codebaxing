@@ -61,7 +61,7 @@ src/
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `CHROMADB_URL` | ChromaDB server URL (**required**) | - |
-| `CODEBAXING_EMBEDDING_PROVIDER` | Embedding backend: `local`, `openai`, `voyage` | `local` |
+| `CODEBAXING_EMBEDDING_PROVIDER` | Embedding backend: `local`, `openai`, `voyage`, `gemini` | `local` |
 | `CODEBAXING_DEVICE` | Compute device (local only): `cpu`, `cuda` | `cpu` |
 | `CODEBAXING_DTYPE` | Model quantization (local only): `fp32`, `fp16`, `q8`, `q4` | `q8` |
 | `CODEBAXING_WORKERS` | Worker threads for parallel embedding (local only, 0=off) | `2` |
@@ -72,6 +72,7 @@ src/
 | `CODEBAXING_MODEL_CACHE` | Directory for embedding model cache | `~/.cache/codebaxing/models` |
 | `CODEBAXING_OPENAI_API_KEY` | OpenAI API key (or use `OPENAI_API_KEY`) | - |
 | `CODEBAXING_VOYAGE_API_KEY` | Voyage API key (or use `VOYAGE_API_KEY`) | - |
+| `CODEBAXING_GEMINI_API_KEY` | Gemini API key (or use `GEMINI_API_KEY`) | - |
 | `CODEBAXING_EMBEDDING_MODEL` | Override embedding model name | per-provider default |
 | `CODEBAXING_EMBEDDING_DIMENSIONS` | Override embedding dimensions | per-provider default |
 | `CODEBAXING_EMBEDDING_BASE_URL` | Custom API endpoint for cloud providers | provider default |
@@ -84,8 +85,11 @@ export CHROMADB_URL=http://localhost:8000
 ```
 
 ### Cloud Embedding (Fastest)
-Use OpenAI or Voyage for ~10,000+ texts/sec (vs ~400 locally):
+Use cloud APIs for ~10,000+ texts/sec (vs ~200 locally):
 ```bash
+# Gemini (FREE - recommended)
+CODEBAXING_EMBEDDING_PROVIDER=gemini GEMINI_API_KEY=... npx codebaxing index /path
+
 # OpenAI
 CODEBAXING_EMBEDDING_PROVIDER=openai OPENAI_API_KEY=sk-... npx codebaxing index /path
 
@@ -94,6 +98,7 @@ CODEBAXING_EMBEDDING_PROVIDER=voyage VOYAGE_API_KEY=va-... npx codebaxing index 
 ```
 
 Provider defaults:
+- **Gemini**: `text-embedding-004` (768 dims, free tier: 1500 RPM)
 - **OpenAI**: `text-embedding-3-small` (384 dims, matches local default)
 - **Voyage**: `voyage-code-3` (1024 dims, optimized for code search)
 
