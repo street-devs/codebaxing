@@ -978,7 +978,9 @@ export class SourceRetriever {
       if (this.verbose) console.log(`Parsing ${filesToReindex.size} files...`);
 
       const chunks: CodeChunk[] = [];
-      for (const relPath of filesToReindex) {
+      const filesToReindexArr = [...filesToReindex];
+      let filesParsed = 0;
+      for (const relPath of filesToReindexArr) {
         const absPath = relToAbs[relPath];
         if (!absPath) continue;
         try {
@@ -987,7 +989,13 @@ export class SourceRetriever {
             chunks.push(this.createChunk(symbol));
           }
         } catch { /* skip */ }
+        filesParsed++;
+        if (this.verbose && filesParsed % 500 === 0) {
+          const pct = ((filesParsed / filesToReindexArr.length) * 100).toFixed(0);
+          process.stdout.write(`\r  Parsed: ${filesParsed.toLocaleString()}/${filesToReindexArr.length.toLocaleString()} (${pct}%) | ${chunks.length.toLocaleString()} chunks`);
+        }
       }
+      if (this.verbose && filesToReindexArr.length >= 500) process.stdout.write('\n');
 
       if (chunks.length > 0 && this.collection) {
         emit('embedding_start', { total: chunks.length });
