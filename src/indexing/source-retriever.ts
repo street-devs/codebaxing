@@ -810,8 +810,18 @@ export class SourceRetriever {
     this.stats.parseErrors = parseErrors;
     this.stats.indexingTime = (performance.now() - startTime) / 1000;
 
-    // Final metadata save with all file mtimes (including resumed files)
-    this.metadata.fileMtimes = currentMtimes;
+    // Final metadata save: merge resumed files + newly processed files.
+    // Only mark files as indexed if they were actually processed (or previously resumed).
+    // Do NOT use currentMtimes (all discovered files) — that would mark unprocessed files
+    // as indexed, causing future resume logic to skip them permanently.
+    const finalMtimes = (this.metadata.fileMtimes as Record<string, number>) ?? {};
+    for (const fp of allFiles) {
+      try {
+        const relPath = path.relative(this.codebasePath, fp);
+        finalMtimes[relPath] = currentMtimes[relPath] ?? fs.statSync(fp).mtimeMs;
+      } catch { /* skip */ }
+    }
+    this.metadata.fileMtimes = finalMtimes;
     emit('complete', { stats: { ...this.stats } });
 
     if (!options.progressCallback) {
@@ -875,6 +885,19 @@ export class SourceRetriever {
 
   getStats(): Record<string, number> {
     return { ...this.stats };
+  }
+
+  /**
+   * Delete the ChromaDB collection for this codebase.
+   * Used by full reindex to start with a clean slate.
+   */
+  async deleteCollection(): Promise<void> {
+    try {
+      await this.chromaClient.deleteCollection({ name: this.collectionName });
+    } catch {
+      // Collection may not exist yet — that's fine
+    }
+    this.collection = null;
   }
 
   async loadExistingIndex(): Promise<boolean> {

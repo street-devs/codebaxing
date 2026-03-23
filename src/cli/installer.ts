@@ -450,10 +450,28 @@ async function runClean(codebasePath?: string): Promise<void> {
     }
   } catch { /* ignore */ }
 
-  // Delete the .codebaxing directory
+  // Delete index data but preserve user config (ignore.json)
   try {
+    const ignoreConfigPath = path.join(paths.codebaxingDir, 'ignore.json');
+    let preservedIgnoreConfig: string | undefined;
+    try {
+      preservedIgnoreConfig = fs.readFileSync(ignoreConfigPath, 'utf-8');
+      // Validate it's actual JSON (not corrupted)
+      JSON.parse(preservedIgnoreConfig);
+    } catch {
+      preservedIgnoreConfig = undefined;
+    }
+
     fs.rmSync(paths.codebaxingDir, { recursive: true, force: true });
-    console.log('✅ Index cleaned successfully.\n');
+
+    // Restore ignore.json if it had user content
+    if (preservedIgnoreConfig) {
+      fs.mkdirSync(paths.codebaxingDir, { recursive: true });
+      fs.writeFileSync(ignoreConfigPath, preservedIgnoreConfig);
+      console.log('✅ Index cleaned successfully (ignore.json preserved).\n');
+    } else {
+      console.log('✅ Index cleaned successfully.\n');
+    }
     console.log('To re-index: npx codebaxing@latest index ' + absolutePath + '\n');
   } catch (err) {
     console.error(`❌ Failed to clean index: ${(err as Error).message}\n`);

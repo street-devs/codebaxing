@@ -213,6 +213,73 @@ server.tool(
   }
 );
 
+// ─── Clean Tool ──────────────────────────────────────────────────────────────
+
+server.tool(
+  'clean',
+  `Clean all indexed data for a codebase. Deletes ChromaDB collection and .codebaxing/ data.
+Preserves user config (ignore.json). Use this to fix corrupted indexes or start fresh.`,
+  {
+    path: z.string().describe('Absolute path to the codebase directory to clean'),
+  },
+  { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+  async (args) => {
+    const codebasePath = path.resolve(args.path);
+    const paths = getCodebaxingPaths(codebasePath);
+    const state = getState();
+    const cleaned: string[] = [];
+
+    // 1. Delete ChromaDB collection
+    try {
+      const { ChromaClient } = await import('chromadb');
+      const chromaUrl = process.env.CHROMADB_URL || 'http://localhost:8000';
+      const client = new ChromaClient({ path: chromaUrl });
+      await client.deleteCollection({ name: 'codebase' });
+      cleaned.push('ChromaDB collection deleted');
+    } catch {
+      cleaned.push('ChromaDB collection not found (already clean)');
+    }
+
+    // 2. Delete .codebaxing/ directory but preserve ignore.json
+    if (fs.existsSync(paths.codebaxingDir)) {
+      const ignoreConfigPath = path.join(paths.codebaxingDir, 'ignore.json');
+      let preservedIgnoreConfig: string | undefined;
+      try {
+        preservedIgnoreConfig = fs.readFileSync(ignoreConfigPath, 'utf-8');
+        JSON.parse(preservedIgnoreConfig); // validate
+      } catch {
+        preservedIgnoreConfig = undefined;
+      }
+
+      fs.rmSync(paths.codebaxingDir, { recursive: true, force: true });
+
+      if (preservedIgnoreConfig) {
+        fs.mkdirSync(paths.codebaxingDir, { recursive: true });
+        fs.writeFileSync(ignoreConfigPath, preservedIgnoreConfig);
+        cleaned.push('.codebaxing/ cleaned (ignore.json preserved)');
+      } else {
+        cleaned.push('.codebaxing/ deleted');
+      }
+    } else {
+      cleaned.push('.codebaxing/ not found (already clean)');
+    }
+
+    // 3. Reset MCP state if this was the loaded codebase
+    if (state.codebasePath === codebasePath) {
+      state.retriever = null;
+      state.memoryRetriever = null;
+      state.codebasePath = null;
+      cleaned.push('MCP state reset');
+    }
+
+    return { content: [{ type: 'text' as const, text: JSON.stringify({
+      success: true,
+      codebasePath,
+      actions: cleaned,
+    }, null, 2) }] };
+  }
+);
+
 // ─── Remember Tool ───────────────────────────────────────────────────────────
 
 server.tool(
@@ -495,8 +562,12 @@ async function fullIndex(
     persistPath: paths.chromaPath,
   });
 
-  // Load previous metadata for resume support (skips already-indexed files)
-  retriever.loadMetadata(paths.metadataPath);
+  // Full index: do NOT load previous metadata.
+  // Previous metadata contains fileMtimes that would cause resume logic
+  // to skip all files, resulting in 0 symbols indexed.
+
+  // Delete existing ChromaDB collection for a clean slate
+  await retriever.deleteCollection();
 
   await retriever.indexCodebase({
     fileExtensions: fileExtensions ?? SUPPORTED_EXTENSIONS,
