@@ -75,7 +75,6 @@ function getMaxFileSize(): number {
 }
 
 // Max chunks to index (configurable via CODEBAXING_MAX_CHUNKS env var)
-// Default: 100000 chunks (~2 hours on CPU)
 function getMaxChunks(): number {
   const envMax = process.env.CODEBAXING_MAX_CHUNKS;
   if (envMax) {
@@ -84,7 +83,7 @@ function getMaxChunks(): number {
       return max;
     }
   }
-  return 100000; // Default 100k chunks
+  return 500000;
 }
 
 // Batch sizes for memory-efficient streaming (configurable via env vars)

@@ -62,11 +62,12 @@ src/
 |----------|-------------|---------|
 | `CHROMADB_URL` | ChromaDB server URL (**required**) | - |
 | `CODEBAXING_DEVICE` | Compute device: `cpu`, `cuda` | `cpu` |
+| `CODEBAXING_DTYPE` | Model quantization: `fp32`, `fp16`, `q8`, `q4` | `q8` |
 | `CODEBAXING_WORKERS` | Worker threads for parallel embedding (0=off, 1-8) | `2` |
 | `CODEBAXING_FILES_PER_BATCH` | Files per batch | `100` |
 | `CODEBAXING_METADATA_SAVE_INTERVAL` | Save progress every N batches | `10` |
 | `CODEBAXING_MAX_FILE_SIZE` | Max file size in MB | `1` |
-| `CODEBAXING_MAX_CHUNKS` | Max chunks to index | `100000` |
+| `CODEBAXING_MAX_CHUNKS` | Max chunks to index | `500000` |
 | `CODEBAXING_MODEL_CACHE` | Directory for embedding model cache | `~/.cache/codebaxing/models` |
 
 ### ChromaDB Setup (Required)
@@ -77,6 +78,8 @@ export CHROMADB_URL=http://localhost:8000
 ```
 
 ### Performance Tuning
+- **Dtype** (default `q8`): Quantization level. `q8` is ~3x faster than `fp32` with negligible quality loss.
+  Use `fp32` only if embedding quality issues are suspected.
 - **Workers** (default 2): Each worker loads its own ONNX model for true parallel embedding.
   Set `CODEBAXING_WORKERS=0` to disable (single-threaded), or up to 8 for large codebases.
 - **CUDA**: NVIDIA GPU acceleration on Linux/Windows. macOS does not support CUDA.
