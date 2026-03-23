@@ -33,7 +33,7 @@ docker run -d -p 8000:8000 --name chromadb chromadb/chroma
 ### 2. Index Codebase (CLI)
 
 ```bash
-npx codebaxing index /path/to/your/project
+npx codebaxing@latest index /path/to/your/project
 ```
 
 Tạo folder `.codebaxing/` chứa index. Chỉ cần làm một lần cho mỗi project.
@@ -41,10 +41,10 @@ Tạo folder `.codebaxing/` chứa index. Chỉ cần làm một lần cho mỗi
 ### 3. Cài MCP Server cho AI Editors
 
 ```bash
-npx codebaxing install              # Claude Desktop
-npx codebaxing install --cursor     # Cursor
-npx codebaxing install --windsurf   # Windsurf
-npx codebaxing install --all        # Tất cả editors
+npx codebaxing@latest install              # Claude Desktop
+npx codebaxing@latest install --cursor     # Cursor
+npx codebaxing@latest install --windsurf   # Windsurf
+npx codebaxing@latest install --all        # Tất cả editors
 ```
 
 Restart editor. Giờ bạn có thể hỏi: *"Tìm logic xác thực người dùng"*
@@ -53,16 +53,18 @@ Restart editor. Giờ bạn có thể hỏi: *"Tìm logic xác thực người d
 
 | Lệnh | Mô tả |
 |------|-------|
-| `npx codebaxing index <path>` | Index codebase (**bắt buộc đầu tiên**) |
-| `npx codebaxing search <query>` | Tìm kiếm code |
-| `npx codebaxing stats [path]` | Xem thống kê index |
-| `npx codebaxing install [--editor]` | Cài MCP server |
-| `npx codebaxing uninstall [--editor]` | Gỡ MCP server |
+| `npx codebaxing@latest index <path>` | Index codebase (**bắt buộc đầu tiên**) |
+| `npx codebaxing@latest search <query>` | Tìm kiếm code |
+| `npx codebaxing@latest stats [path]` | Xem thống kê index |
+| `npx codebaxing@latest install [--editor]` | Cài MCP server |
+| `npx codebaxing@latest uninstall [--editor]` | Gỡ MCP server |
+
+> **Tip:** Dùng `@latest` để luôn lấy version mới nhất.
 
 ### Search Options
 
 ```bash
-npx codebaxing search "auth middleware" --path ./src --limit 10
+npx codebaxing@latest search "auth middleware" --path ./src --limit 10
 ```
 
 - `--path, -p` - Đường dẫn codebase (mặc định: thư mục hiện tại)
@@ -81,7 +83,7 @@ Sau khi cài, AI agents có thể dùng các tools:
 | `recall` | Truy xuất memories |
 | `forget` | Xóa memories |
 
-> **Lưu ý:** Tool `index` đã tắt cho AI agents. Dùng CLI để index: `npx codebaxing index <path>`
+> **Lưu ý:** Tool `index` đã tắt cho AI agents. Dùng CLI: `npx codebaxing@latest index <path>`
 
 ## Cấu Hình
 

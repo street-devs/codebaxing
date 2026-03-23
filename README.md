@@ -33,7 +33,7 @@ docker run -d -p 8000:8000 --name chromadb chromadb/chroma
 ### 2. Index Your Codebase (CLI)
 
 ```bash
-npx codebaxing index /path/to/your/project
+npx codebaxing@latest index /path/to/your/project
 ```
 
 This creates a `.codebaxing/` folder with the index. Only needs to be done once per project.
@@ -41,10 +41,10 @@ This creates a `.codebaxing/` folder with the index. Only needs to be done once 
 ### 3. Install MCP Server for AI Editors
 
 ```bash
-npx codebaxing install              # Claude Desktop
-npx codebaxing install --cursor     # Cursor
-npx codebaxing install --windsurf   # Windsurf
-npx codebaxing install --all        # All editors
+npx codebaxing@latest install              # Claude Desktop
+npx codebaxing@latest install --cursor     # Cursor
+npx codebaxing@latest install --windsurf   # Windsurf
+npx codebaxing@latest install --all        # All editors
 ```
 
 Restart your editor. Now you can ask: *"Find the authentication logic"*
@@ -53,16 +53,18 @@ Restart your editor. Now you can ask: *"Find the authentication logic"*
 
 | Command | Description |
 |---------|-------------|
-| `npx codebaxing index <path>` | Index a codebase (**required first**) |
-| `npx codebaxing search <query>` | Search indexed code |
-| `npx codebaxing stats [path]` | Show index statistics |
-| `npx codebaxing install [--editor]` | Install MCP server |
-| `npx codebaxing uninstall [--editor]` | Uninstall MCP server |
+| `npx codebaxing@latest index <path>` | Index a codebase (**required first**) |
+| `npx codebaxing@latest search <query>` | Search indexed code |
+| `npx codebaxing@latest stats [path]` | Show index statistics |
+| `npx codebaxing@latest install [--editor]` | Install MCP server |
+| `npx codebaxing@latest uninstall [--editor]` | Uninstall MCP server |
+
+> **Tip:** Use `@latest` to always get the newest version.
 
 ### Search Options
 
 ```bash
-npx codebaxing search "auth middleware" --path ./src --limit 10
+npx codebaxing@latest search "auth middleware" --path ./src --limit 10
 ```
 
 - `--path, -p` - Codebase path (default: current directory)
@@ -81,7 +83,7 @@ After installing, AI agents can use these tools:
 | `recall` | Retrieve memories |
 | `forget` | Delete memories |
 
-> **Note:** The `index` tool is disabled for AI agents. Use CLI to index: `npx codebaxing index <path>`
+> **Note:** The `index` tool is disabled for AI agents. Use CLI: `npx codebaxing@latest index <path>`
 
 ## Configuration
 
