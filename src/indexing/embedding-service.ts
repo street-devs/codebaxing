@@ -161,22 +161,19 @@ export class EmbeddingService {
         await importTransformers();
 
         const deviceLabel = this.device === 'cpu' ? 'CPU' : this.device.toUpperCase();
-        if (this.showProgress) {
-          console.log(`Loading embedding model: ${this.config.modelId} (device: ${deviceLabel})`);
-        }
+        // Always log model loading to stderr so MCP servers and CLI both show it
+        console.error(`[codebaxing] Loading embedding model: ${this.config.modelId} (device: ${deviceLabel}, cache: ${env.cacheDir})`);
 
         // Progress callback for model download
-        const progressCallback = this.showProgress
-          ? (progress: { status: string; file?: string; progress?: number; loaded?: number; total?: number }) => {
-              if (progress.status === 'downloading' || progress.status === 'progress') {
-                const pct = progress.progress ?? (progress.loaded && progress.total ? (progress.loaded / progress.total) * 100 : 0);
-                const fileName = progress.file ? progress.file.split('/').pop() : 'model';
-                process.stdout.write(`\r   Downloading ${fileName}: ${pct.toFixed(1)}%`);
-              } else if (progress.status === 'done') {
-                process.stdout.write('\r   Download complete.                    \n');
-              }
-            }
-          : undefined;
+        const progressCallback = (progress: { status: string; file?: string; progress?: number; loaded?: number; total?: number }) => {
+          if (progress.status === 'downloading' || progress.status === 'progress') {
+            const pct = progress.progress ?? (progress.loaded && progress.total ? (progress.loaded / progress.total) * 100 : 0);
+            const fileName = progress.file ? progress.file.split('/').pop() : 'model';
+            process.stderr.write(`\r[codebaxing]    Downloading ${fileName}: ${pct.toFixed(1)}%`);
+          } else if (progress.status === 'done') {
+            process.stderr.write(`\r[codebaxing]    Download complete.                    \n`);
+          }
+        };
 
         // Build pipeline options
         const pipelineOptions: Record<string, unknown> = {
@@ -197,8 +194,8 @@ export class EmbeddingService {
 
           // If GPU failed, try falling back to CPU
           if (this.device !== 'cpu' && (errorMsg.includes('GPU') || errorMsg.includes('CUDA') || errorMsg.includes('WebGPU'))) {
-            console.warn(
-              `Failed to use ${deviceLabel}: ${errorMsg}. Falling back to CPU.`
+            console.error(
+              `[codebaxing] Failed to use ${deviceLabel}: ${errorMsg}. Falling back to CPU.`
             );
             this.device = 'cpu';
             this.extractor = await pipeline('feature-extraction', this.config.modelId, {
@@ -206,8 +203,8 @@ export class EmbeddingService {
             });
           } else if (this.modelName !== DEFAULT_MODEL) {
             // Fall back to default model if custom model fails
-            console.warn(
-              `Failed to load model ${this.config.modelId}: ${errorMsg}. ` +
+            console.error(
+              `[codebaxing] Failed to load model ${this.config.modelId}: ${errorMsg}. ` +
               `Falling back to ${DEFAULT_MODEL}`
             );
             this.config = { ...EMBEDDING_MODELS[DEFAULT_MODEL] };
@@ -219,10 +216,8 @@ export class EmbeddingService {
           }
         }
 
-        if (this.showProgress) {
-          const actualDevice = this.device === 'cpu' ? 'CPU' : this.device.toUpperCase();
-          console.log(`Model loaded: ${this.config.modelId} (${this.config.dimensions} dims, ${actualDevice})`);
-        }
+        const actualDevice = this.device === 'cpu' ? 'CPU' : this.device.toUpperCase();
+        console.error(`[codebaxing] Model loaded: ${this.config.modelId} (${this.config.dimensions} dims, ${actualDevice})`);
       } finally {
         this.loading = null;
       }
@@ -312,7 +307,7 @@ export class EmbeddingService {
         }
       } catch (e) {
         // Fallback: process one by one if batch fails
-        console.warn(`Batch embedding failed, falling back to sequential: ${(e as Error).message}`);
+        console.error(`[codebaxing] Batch embedding failed, falling back to sequential: ${(e as Error).message}`);
         for (const text of batch) {
           try {
             const output = await this.extractor(text, {
