@@ -45,6 +45,8 @@ let transformersLoaded = false;
 async function importTransformers() {
   if (transformersLoaded) return;
   const transformers = await import('@huggingface/transformers');
+  const os = await import('os');
+  const path = await import('path');
   pipeline = transformers.pipeline;
   env = transformers.env;
 
@@ -52,9 +54,15 @@ async function importTransformers() {
   env.allowLocalModels = true;
   env.allowRemoteModels = true;
 
+  // Use a stable cache directory so models persist across npx runs.
+  // Default transformers.js cache is inside node_modules (lost on every npx -y invocation).
+  const cacheDir = process.env.CODEBAXING_MODEL_CACHE
+    ?? path.join(os.homedir(), '.cache', 'codebaxing', 'models');
+  env.cacheDir = cacheDir;
+
   // Optimize ONNX Runtime for multi-threaded inference
   // Use all available CPU cores for parallel WASM execution
-  const numCpus = (await import('os')).cpus().length;
+  const numCpus = os.cpus().length;
   env.backends.onnx.wasm.numThreads = Math.min(numCpus, 8);
 
   transformersLoaded = true;
@@ -149,72 +157,75 @@ export class EmbeddingService {
     if (this.loading) return this.loading;
 
     this.loading = (async () => {
-      await importTransformers();
-
-      const deviceLabel = this.device === 'cpu' ? 'CPU' : this.device.toUpperCase();
-      if (this.showProgress) {
-        console.log(`Loading embedding model: ${this.config.modelId} (device: ${deviceLabel})`);
-      }
-
-      // Progress callback for model download
-      const progressCallback = this.showProgress
-        ? (progress: { status: string; file?: string; progress?: number; loaded?: number; total?: number }) => {
-            if (progress.status === 'downloading' || progress.status === 'progress') {
-              const pct = progress.progress ?? (progress.loaded && progress.total ? (progress.loaded / progress.total) * 100 : 0);
-              const fileName = progress.file ? progress.file.split('/').pop() : 'model';
-              process.stdout.write(`\r   Downloading ${fileName}: ${pct.toFixed(1)}%`);
-            } else if (progress.status === 'done') {
-              process.stdout.write('\r   Download complete.                    \n');
-            }
-          }
-        : undefined;
-
-      // Build pipeline options
-      const pipelineOptions: Record<string, unknown> = {
-        quantized: true,
-        progress_callback: progressCallback,
-      };
-
-      // Configure device (Transformers.js uses 'device' option)
-      // Note: 'auto' lets Transformers.js pick the best available
-      if (this.device !== 'cpu') {
-        pipelineOptions.device = this.device;
-      }
-
       try {
-        this.extractor = await pipeline('feature-extraction', this.config.modelId, pipelineOptions);
-      } catch (e) {
-        const errorMsg = (e as Error).message;
+        await importTransformers();
 
-        // If GPU failed, try falling back to CPU
-        if (this.device !== 'cpu' && (errorMsg.includes('GPU') || errorMsg.includes('CUDA') || errorMsg.includes('WebGPU'))) {
-          console.warn(
-            `Failed to use ${deviceLabel}: ${errorMsg}. Falling back to CPU.`
-          );
-          this.device = 'cpu';
-          this.extractor = await pipeline('feature-extraction', this.config.modelId, {
-            quantized: true,
-          });
-        } else if (this.modelName !== DEFAULT_MODEL) {
-          // Fall back to default model if custom model fails
-          console.warn(
-            `Failed to load model ${this.config.modelId}: ${errorMsg}. ` +
-            `Falling back to ${DEFAULT_MODEL}`
-          );
-          this.config = { ...EMBEDDING_MODELS[DEFAULT_MODEL] };
-          this.extractor = await pipeline('feature-extraction', this.config.modelId, {
-            quantized: true,
-          });
-        } else {
-          throw new EmbeddingError(`Failed to load embedding model: ${errorMsg}`);
+        const deviceLabel = this.device === 'cpu' ? 'CPU' : this.device.toUpperCase();
+        if (this.showProgress) {
+          console.log(`Loading embedding model: ${this.config.modelId} (device: ${deviceLabel})`);
         }
-      }
 
-      if (this.showProgress) {
-        const actualDevice = this.device === 'cpu' ? 'CPU' : this.device.toUpperCase();
-        console.log(`Model loaded: ${this.config.modelId} (${this.config.dimensions} dims, ${actualDevice})`);
+        // Progress callback for model download
+        const progressCallback = this.showProgress
+          ? (progress: { status: string; file?: string; progress?: number; loaded?: number; total?: number }) => {
+              if (progress.status === 'downloading' || progress.status === 'progress') {
+                const pct = progress.progress ?? (progress.loaded && progress.total ? (progress.loaded / progress.total) * 100 : 0);
+                const fileName = progress.file ? progress.file.split('/').pop() : 'model';
+                process.stdout.write(`\r   Downloading ${fileName}: ${pct.toFixed(1)}%`);
+              } else if (progress.status === 'done') {
+                process.stdout.write('\r   Download complete.                    \n');
+              }
+            }
+          : undefined;
+
+        // Build pipeline options
+        const pipelineOptions: Record<string, unknown> = {
+          quantized: true,
+          progress_callback: progressCallback,
+        };
+
+        // Configure device (Transformers.js uses 'device' option)
+        // Note: 'auto' lets Transformers.js pick the best available
+        if (this.device !== 'cpu') {
+          pipelineOptions.device = this.device;
+        }
+
+        try {
+          this.extractor = await pipeline('feature-extraction', this.config.modelId, pipelineOptions);
+        } catch (e) {
+          const errorMsg = (e as Error).message;
+
+          // If GPU failed, try falling back to CPU
+          if (this.device !== 'cpu' && (errorMsg.includes('GPU') || errorMsg.includes('CUDA') || errorMsg.includes('WebGPU'))) {
+            console.warn(
+              `Failed to use ${deviceLabel}: ${errorMsg}. Falling back to CPU.`
+            );
+            this.device = 'cpu';
+            this.extractor = await pipeline('feature-extraction', this.config.modelId, {
+              quantized: true,
+            });
+          } else if (this.modelName !== DEFAULT_MODEL) {
+            // Fall back to default model if custom model fails
+            console.warn(
+              `Failed to load model ${this.config.modelId}: ${errorMsg}. ` +
+              `Falling back to ${DEFAULT_MODEL}`
+            );
+            this.config = { ...EMBEDDING_MODELS[DEFAULT_MODEL] };
+            this.extractor = await pipeline('feature-extraction', this.config.modelId, {
+              quantized: true,
+            });
+          } else {
+            throw new EmbeddingError(`Failed to load embedding model: ${errorMsg}`);
+          }
+        }
+
+        if (this.showProgress) {
+          const actualDevice = this.device === 'cpu' ? 'CPU' : this.device.toUpperCase();
+          console.log(`Model loaded: ${this.config.modelId} (${this.config.dimensions} dims, ${actualDevice})`);
+        }
+      } finally {
+        this.loading = null;
       }
-      this.loading = null;
     })();
 
     return this.loading;

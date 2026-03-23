@@ -571,7 +571,10 @@ export class SourceRetriever {
         try {
           const embeddings = await this.embeddingService.embedBatch(texts);
           allEmbeddings.push(...embeddings);
-        } catch {
+        } catch (e) {
+          // Let model loading errors propagate — don't silently produce zero-vectors
+          const msg = (e as Error).message ?? '';
+          if (msg.includes('Failed to load embedding model')) throw e;
           for (let j = 0; j < subBatch.length; j++) {
             allEmbeddings.push(new Array(384).fill(0));
           }
