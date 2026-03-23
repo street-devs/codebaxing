@@ -24,7 +24,7 @@ if (isChildProcess) {
     const numWorkers = parseInt(process.argv[3] ?? '2', 10);
     const threadsPerWorker = Math.max(1, Math.floor(totalCpus / numWorkers));
     process.env.CODEBAXING_ONNX_THREADS = String(threadsPerWorker);
-    service = new EmbeddingService(modelName, { showProgress: false });
+    service = new EmbeddingService(modelName, { showProgress: false, disableCachePurge: true });
   }
 
   process.on('message', async (msg: { type: string; texts?: string[]; id?: number }) => {

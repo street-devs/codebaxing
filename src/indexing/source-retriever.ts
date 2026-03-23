@@ -11,7 +11,7 @@ import path from 'node:path';
 import { ChromaClient, type Collection } from 'chromadb';
 import { TreeSitterParser } from '../parsers/treesitter-parser.js';
 import { getLanguageForFile, getSupportedExtensions } from '../parsers/language-configs.js';
-import { EmbeddingService, getEmbeddingService } from './embedding-service.js';
+import { EmbeddingService, getEmbeddingService, EMBEDDING_MODELS, DEFAULT_MODEL } from './embedding-service.js';
 import { parallelParseFiles, type ProgressCallback } from './parallel-indexer.js';
 import { EmbeddingWorkerPool, getEmbeddingPool } from './embedding-pool.js';
 import type { Symbol } from '../core/models.js';
@@ -578,8 +578,15 @@ export class SourceRetriever {
         this.embeddingPool = getEmbeddingPool({ numWorkers: workerCount, modelName: this.embeddingModel });
         await this.embeddingPool.initialize();
       } catch (e) {
-        console.error(`[codebaxing] Worker pool failed, using single-threaded: ${(e as Error).message}`);
+        const errMsg = (e as Error).message;
+        console.error(`[codebaxing] Worker pool failed, using single-threaded: ${errMsg}`);
         this.embeddingPool = null;
+        // If workers failed due to corrupt model, purge cache so single-threaded retry gets a fresh download
+        if (errMsg.includes('Protobuf parsing failed') || errMsg.includes('Load model from')) {
+          const modelConfig = EMBEDDING_MODELS[this.embeddingModel];
+          const modelId = modelConfig?.modelId ?? this.embeddingModel;
+          EmbeddingService.purgeModelCache(modelId);
+        }
       }
     }
 
@@ -1017,8 +1024,14 @@ export class SourceRetriever {
             this.embeddingPool = getEmbeddingPool({ numWorkers: workerCount, modelName: this.embeddingModel });
             await this.embeddingPool.initialize();
           } catch (e) {
-            console.error(`[codebaxing] Worker pool failed: ${(e as Error).message}`);
+            const errMsg = (e as Error).message;
+            console.error(`[codebaxing] Worker pool failed: ${errMsg}`);
             this.embeddingPool = null;
+            if (errMsg.includes('Protobuf parsing failed') || errMsg.includes('Load model from')) {
+              const modelConfig = EMBEDDING_MODELS[this.embeddingModel];
+              const modelId = modelConfig?.modelId ?? this.embeddingModel;
+              EmbeddingService.purgeModelCache(modelId);
+            }
           }
         }
 

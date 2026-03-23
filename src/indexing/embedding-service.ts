@@ -127,13 +127,17 @@ export class EmbeddingService {
     cacheMisses: 0,
   };
 
+  // When true, skip cache purge on corrupt model (used by workers to avoid race conditions)
+  private disableCachePurge: boolean;
+
   constructor(
     modelName: string = DEFAULT_MODEL,
-    options: { showProgress?: boolean; device?: DeviceType } = {}
+    options: { showProgress?: boolean; device?: DeviceType; disableCachePurge?: boolean } = {}
   ) {
     this.modelName = modelName;
     this.showProgress = options.showProgress ?? false;
     this.device = options.device ?? getConfiguredDevice();
+    this.disableCachePurge = options.disableCachePurge ?? false;
 
     if (modelName in EMBEDDING_MODELS) {
       this.config = { ...EMBEDDING_MODELS[modelName] };
@@ -200,7 +204,11 @@ export class EmbeddingService {
 
           // Detect corrupt cached model (e.g. incomplete download, broken ONNX protobuf)
           if (errorMsg.includes('Protobuf parsing failed') || errorMsg.includes('Load model from')) {
-            const purged = this.purgeModelCache(this.config.modelId);
+            // Workers skip purge to avoid race conditions — let main process handle it
+            if (this.disableCachePurge) {
+              throw new EmbeddingError(`Failed to load embedding model: ${errorMsg}`);
+            }
+            const purged = EmbeddingService.purgeModelCache(this.config.modelId);
             if (purged) {
               console.error(
                 `[codebaxing] Corrupt model cache detected. Purged cache and re-downloading ${this.config.modelId}...`
@@ -373,10 +381,13 @@ export class EmbeddingService {
    * Purge cached model files for a given model ID (e.g. "Xenova/all-MiniLM-L6-v2").
    * Returns true if cache was found and deleted, false otherwise.
    */
-  private purgeModelCache(modelId: string): boolean {
-    if (!env?.cacheDir) return false;
+  static purgeModelCache(modelId: string): boolean {
+    // Resolve cache dir: use env if transformers already loaded, otherwise compute default
+    const cacheDir = env?.cacheDir
+      ?? process.env.CODEBAXING_MODEL_CACHE
+      ?? path.join(process.env.HOME ?? process.env.USERPROFILE ?? '/tmp', '.cache', 'codebaxing', 'models');
 
-    const modelCacheDir = path.join(env.cacheDir, ...modelId.split('/'));
+    const modelCacheDir = path.join(cacheDir, ...modelId.split('/'));
     try {
       if (fs.existsSync(modelCacheDir)) {
         fs.rmSync(modelCacheDir, { recursive: true, force: true });
