@@ -96,6 +96,7 @@ After installing, AI agents can use these tools:
 | `CODEBAXING_MAX_FILE_SIZE` | Max file size in MB | `1` |
 | `CODEBAXING_MAX_CHUNKS` | Max chunks to index | `100000` |
 | `CODEBAXING_FILES_PER_BATCH` | Files per batch (lower = less RAM) | `50` |
+| `CODEBAXING_PARALLEL_BATCHES` | Concurrent batches (higher = faster) | `3` |
 
 ### Manual Editor Config
 

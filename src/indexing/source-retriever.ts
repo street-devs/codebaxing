@@ -107,6 +107,17 @@ function getEmbedBatchSize(): number {
   return 32; // Default 32 texts per embed batch
 }
 
+// Parallel batches: how many batches to process concurrently
+// Higher = faster but more memory. Default 3 for balance.
+function getParallelBatches(): number {
+  const envVal = process.env.CODEBAXING_PARALLEL_BATCHES;
+  if (envVal) {
+    const val = parseInt(envVal, 10);
+    if (!isNaN(val) && val > 0 && val <= 10) return val;
+  }
+  return 3; // Default 3 concurrent batches
+}
+
 // ─── File Discovery ──────────────────────────────────────────────────────────
 
 export interface DiscoverFilesOptions {
@@ -379,78 +390,64 @@ export class SourceRetriever {
       metadata: { description: `Code embeddings for ${path.basename(this.codebasePath)}` },
     });
 
-    // Step 3: Process files in streaming batches
-    // Parse → Filter → Embed → Store → Free memory → Repeat
+    // Step 3: Process files in parallel batches
+    // Multiple batches run concurrently: Parse → Embed → Store
     const numBatches = Math.ceil(allFiles.length / filesPerBatch);
     const maxChunks = getMaxChunks();
     const minCodeLength = 30;
-    const seenIds = new Map<string, number>();
+    const parallelBatches = getParallelBatches();
 
+    // Shared state (updated atomically after each batch completes)
+    const seenIds = new Map<string, number>();
     let totalSymbols = 0;
     let totalChunks = 0;
     let parseErrors = 0;
+    let batchesCompleted = 0;
+    let reachedMaxChunks = false;
     const batchStartTime = performance.now();
 
-    for (let batchIdx = 0; batchIdx < numBatches; batchIdx++) {
+    if (this.verbose) {
+      console.log(`  Parallel batches: ${parallelBatches}`);
+    }
+
+    // Process a single batch - returns results to be merged
+    const processBatch = async (batchIdx: number): Promise<{
+      chunks: CodeChunk[];
+      embeddings: number[][];
+      symbols: number;
+      errors: number;
+      fileCount: number;
+    } | null> => {
+      if (reachedMaxChunks) return null;
+
       const batchStart = batchIdx * filesPerBatch;
       const batchEnd = Math.min(batchStart + filesPerBatch, allFiles.length);
       const batchFiles = allFiles.slice(batchStart, batchEnd);
 
-      if (this.verbose) {
-        const elapsed = (performance.now() - batchStartTime) / 1000;
-        const filesProcessed = batchStart;
-        const rate = filesProcessed / elapsed || 1;
-        const remainingFiles = allFiles.length - filesProcessed;
-        const etaSecs = remainingFiles / rate;
-        const eta = etaSecs > 60 ? `${(etaSecs / 60).toFixed(1)}m` : `${Math.round(etaSecs)}s`;
-        const pct = ((filesProcessed / allFiles.length) * 100).toFixed(1);
-        console.log(`\n📦 Batch ${batchIdx + 1}/${numBatches} | Files: ${batchStart + 1}-${batchEnd} of ${allFiles.length.toLocaleString()} (${pct}%) | ETA: ${eta}`);
-      }
-
-      // 3a. Parse this batch
+      // Parse this batch
       const batchChunks: CodeChunk[] = [];
+      let batchSymbols = 0;
+      let batchErrors = 0;
+
       for (const filepath of batchFiles) {
         try {
           const parsed = this.parser.parseFile(filepath);
           for (const symbol of parsed.symbols) {
-            totalSymbols++;
-            // Filter trivial symbols
+            batchSymbols++;
             if (!symbol.codeSnippet || symbol.codeSnippet.length < minCodeLength) continue;
             if (symbol.type === 'variable' && symbol.lineEnd - symbol.lineStart < 2) continue;
-
-            const chunk = this.createChunk(symbol);
-            // Deduplicate IDs
-            const existingCount = seenIds.get(chunk.id);
-            if (existingCount !== undefined) {
-              seenIds.set(chunk.id, existingCount + 1);
-              chunk.id = `${chunk.id}#${existingCount + 1}`;
-            } else {
-              seenIds.set(chunk.id, 0);
-            }
-            batchChunks.push(chunk);
+            batchChunks.push(this.createChunk(symbol));
           }
         } catch {
-          parseErrors++;
+          batchErrors++;
         }
       }
 
-      if (batchChunks.length === 0) continue;
-
-      // Check max chunks limit
-      if (totalChunks + batchChunks.length > maxChunks) {
-        const remaining = maxChunks - totalChunks;
-        if (remaining <= 0) {
-          if (this.verbose) {
-            console.log(`\n⚠️  Max chunks limit reached (${maxChunks.toLocaleString()}). Stopping indexing.`);
-          }
-          break;
-        }
-        // Take only what we can fit, prioritizing longer code
-        batchChunks.sort((a, b) => b.text.length - a.text.length);
-        batchChunks.length = remaining;
+      if (batchChunks.length === 0) {
+        return { chunks: [], embeddings: [], symbols: batchSymbols, errors: batchErrors, fileCount: batchFiles.length };
       }
 
-      // 3b. Embed in sub-batches for memory efficiency
+      // Embed in sub-batches
       const allEmbeddings: number[][] = [];
       for (let i = 0; i < batchChunks.length; i += embedBatchSize) {
         const subBatch = batchChunks.slice(i, i + embedBatchSize);
@@ -458,22 +455,62 @@ export class SourceRetriever {
         try {
           const embeddings = await this.embeddingService.embedBatch(texts);
           allEmbeddings.push(...embeddings);
-        } catch (e) {
-          // Push zero vectors as fallback
+        } catch {
           for (let j = 0; j < subBatch.length; j++) {
             allEmbeddings.push(new Array(384).fill(0));
           }
         }
       }
 
-      // 3c. Store in ChromaDB (batch limit ~5000)
-      const chromaBatchSize = 5000;
-      for (let i = 0; i < batchChunks.length; i += chromaBatchSize) {
-        const end = Math.min(i + chromaBatchSize, batchChunks.length);
-        const subChunks = batchChunks.slice(i, end);
-        const subEmbeddings = allEmbeddings.slice(i, end);
+      return { chunks: batchChunks, embeddings: allEmbeddings, symbols: batchSymbols, errors: batchErrors, fileCount: batchFiles.length };
+    };
 
-        await this.collection.add({
+    // Store batch results to ChromaDB (must be sequential to avoid race conditions)
+    const storeBatchResults = async (result: NonNullable<Awaited<ReturnType<typeof processBatch>>>, batchIdx: number) => {
+      if (result.chunks.length === 0) {
+        totalSymbols += result.symbols;
+        parseErrors += result.errors;
+        batchesCompleted++;
+        return;
+      }
+
+      // Deduplicate IDs (must be done sequentially)
+      for (const chunk of result.chunks) {
+        const existingCount = seenIds.get(chunk.id);
+        if (existingCount !== undefined) {
+          seenIds.set(chunk.id, existingCount + 1);
+          chunk.id = `${chunk.id}#${existingCount + 1}`;
+        } else {
+          seenIds.set(chunk.id, 0);
+        }
+      }
+
+      // Check max chunks limit
+      let chunksToStore = result.chunks;
+      let embeddingsToStore = result.embeddings;
+      if (totalChunks + chunksToStore.length > maxChunks) {
+        const remaining = maxChunks - totalChunks;
+        if (remaining <= 0) {
+          reachedMaxChunks = true;
+          if (this.verbose) {
+            console.log(`\n⚠️  Max chunks limit reached (${maxChunks.toLocaleString()}). Stopping indexing.`);
+          }
+          return;
+        }
+        // Take only what we can fit
+        chunksToStore.sort((a, b) => b.text.length - a.text.length);
+        chunksToStore = chunksToStore.slice(0, remaining);
+        embeddingsToStore = embeddingsToStore.slice(0, remaining);
+      }
+
+      // Store in ChromaDB
+      const chromaBatchSize = 5000;
+      for (let i = 0; i < chunksToStore.length; i += chromaBatchSize) {
+        const end = Math.min(i + chromaBatchSize, chunksToStore.length);
+        const subChunks = chunksToStore.slice(i, end);
+        const subEmbeddings = embeddingsToStore.slice(i, end);
+
+        await this.collection!.add({
           ids: subChunks.map(c => c.id),
           embeddings: subEmbeddings,
           documents: subChunks.map(c => c.text),
@@ -481,17 +518,56 @@ export class SourceRetriever {
         });
       }
 
-      totalChunks += batchChunks.length;
+      totalSymbols += result.symbols;
+      parseErrors += result.errors;
+      totalChunks += chunksToStore.length;
+      batchesCompleted++;
 
       if (this.verbose) {
-        console.log(`   ✓ Parsed ${batchFiles.length} files → ${batchChunks.length} chunks | Total: ${totalChunks.toLocaleString()} chunks`);
+        const elapsed = (performance.now() - batchStartTime) / 1000;
+        const rate = batchesCompleted / elapsed || 1;
+        const remainingBatches = numBatches - batchesCompleted;
+        const etaSecs = remainingBatches / rate;
+        const eta = etaSecs > 60 ? `${(etaSecs / 60).toFixed(1)}m` : `${Math.round(etaSecs)}s`;
+        const pct = ((batchesCompleted / numBatches) * 100).toFixed(1);
+        console.log(`✓ Batch ${batchesCompleted}/${numBatches} (${pct}%) | +${chunksToStore.length} chunks | Total: ${totalChunks.toLocaleString()} | ETA: ${eta}`);
       }
 
-      // 3d. Clear references to help GC
-      batchChunks.length = 0;
-      allEmbeddings.length = 0;
+      emit('embedding_progress', { current: totalChunks, total: allFiles.length * 5 });
+    };
 
-      emit('embedding_progress', { current: totalChunks, total: allFiles.length * 5 }); // rough estimate
+    // Process batches with concurrency limit using a sliding window
+    const pendingResults: Map<number, Promise<Awaited<ReturnType<typeof processBatch>>>> = new Map();
+    let nextBatchToProcess = 0;
+    let nextBatchToStore = 0;
+
+    while (nextBatchToStore < numBatches && !reachedMaxChunks) {
+      // Start new batches up to the concurrency limit
+      while (pendingResults.size < parallelBatches && nextBatchToProcess < numBatches && !reachedMaxChunks) {
+        const batchIdx = nextBatchToProcess++;
+        pendingResults.set(batchIdx, processBatch(batchIdx));
+      }
+
+      // Wait for the next batch in order to complete and store it
+      if (pendingResults.has(nextBatchToStore)) {
+        const result = await pendingResults.get(nextBatchToStore)!;
+        pendingResults.delete(nextBatchToStore);
+        if (result) {
+          await storeBatchResults(result, nextBatchToStore);
+        }
+        nextBatchToStore++;
+      } else {
+        // No more batches to process
+        break;
+      }
+    }
+
+    // Wait for any remaining batches
+    for (const [batchIdx, promise] of pendingResults) {
+      const result = await promise;
+      if (result && !reachedMaxChunks) {
+        await storeBatchResults(result, batchIdx);
+      }
     }
 
     this.stats.totalSymbols = totalSymbols;

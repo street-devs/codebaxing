@@ -96,6 +96,7 @@ Sau khi cài, AI agents có thể dùng các tools:
 | `CODEBAXING_MAX_FILE_SIZE` | Kích thước file tối đa (MB) | `1` |
 | `CODEBAXING_MAX_CHUNKS` | Số chunks tối đa | `100000` |
 | `CODEBAXING_FILES_PER_BATCH` | Files mỗi batch (thấp = ít RAM) | `50` |
+| `CODEBAXING_PARALLEL_BATCHES` | Số batches chạy song song (cao = nhanh hơn) | `3` |
 
 ### Cấu Hình Editor Thủ Công
 
