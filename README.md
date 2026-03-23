@@ -93,11 +93,13 @@ After installing, AI agents can use these tools:
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `CHROMADB_URL` | ChromaDB server URL | `http://localhost:8000` |
-| `CODEBAXING_DEVICE` | Compute: `cpu`, `webgpu`, `cuda` | `cpu` |
+| `CODEBAXING_DEVICE` | Compute: `cpu`, `cuda` | `cpu` |
+| `CODEBAXING_WORKERS` | Worker threads for parallel embedding (0=off, 1-8) | `2` |
 | `CODEBAXING_MAX_FILE_SIZE` | Max file size in MB | `1` |
 | `CODEBAXING_MAX_CHUNKS` | Max chunks to index | `100000` |
-| `CODEBAXING_FILES_PER_BATCH` | Files per batch (lower = less RAM) | `50` |
-| `CODEBAXING_PARALLEL_BATCHES` | Concurrent batches (higher = faster) | `3` |
+| `CODEBAXING_FILES_PER_BATCH` | Files per batch (lower = less RAM) | `100` |
+| `CODEBAXING_PARALLEL_BATCHES` | Concurrent batches | `3` |
+| `CODEBAXING_METADATA_SAVE_INTERVAL` | Save progress every N batches | `10` |
 | `CODEBAXING_MODEL_CACHE` | Directory for embedding model cache | `~/.cache/codebaxing/models` |
 
 ### Manual Editor Config

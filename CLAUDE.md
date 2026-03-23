@@ -28,6 +28,8 @@ src/
 │   └── language-configs.ts   # Tree-sitter node mappings (24+ languages)
 ├── indexing/
 │   ├── embedding-service.ts  # @huggingface/transformers wrapper
+│   ├── embedding-pool.ts     # Worker pool for parallel embedding
+│   ├── embedding-worker.ts   # Worker thread entry point
 │   ├── parallel-indexer.ts   # File parsing
 │   ├── source-retriever.ts   # Code indexing + semantic search
 │   └── memory-retriever.ts   # Memory storage + semantic recall
@@ -59,7 +61,12 @@ src/
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `CHROMADB_URL` | ChromaDB server URL (**required**) | - |
-| `CODEBAXING_DEVICE` | Compute device: `cpu`, `cuda`, `webgpu`, `auto` | `cpu` |
+| `CODEBAXING_DEVICE` | Compute device: `cpu`, `cuda` | `cpu` |
+| `CODEBAXING_WORKERS` | Worker threads for parallel embedding (0=off, 1-8) | `2` |
+| `CODEBAXING_FILES_PER_BATCH` | Files per batch | `100` |
+| `CODEBAXING_METADATA_SAVE_INTERVAL` | Save progress every N batches | `10` |
+| `CODEBAXING_MAX_FILE_SIZE` | Max file size in MB | `1` |
+| `CODEBAXING_MAX_CHUNKS` | Max chunks to index | `100000` |
 | `CODEBAXING_MODEL_CACHE` | Directory for embedding model cache | `~/.cache/codebaxing/models` |
 
 ### ChromaDB Setup (Required)
@@ -69,13 +76,10 @@ docker run -d -p 8000:8000 chromadb/chroma
 export CHROMADB_URL=http://localhost:8000
 ```
 
-### GPU/Accelerator
-- `cpu` (default): Works everywhere
-- `webgpu`: Uses Metal on macOS
-- `cuda`: NVIDIA GPU (Linux/Windows only)
-- `auto`: Auto-detect best available
-
-Note: macOS does not support CUDA. Use `webgpu` for acceleration on Mac.
+### Performance Tuning
+- **Workers** (default 2): Each worker loads its own ONNX model for true parallel embedding.
+  Set `CODEBAXING_WORKERS=0` to disable (single-threaded), or up to 8 for large codebases.
+- **CUDA**: NVIDIA GPU acceleration on Linux/Windows. macOS does not support CUDA.
 
 ## Commands
 
@@ -106,6 +110,7 @@ npm run typecheck         # Type check without emit
 
 - **Embedding Model**: `Xenova/all-MiniLM-L6-v2` (384 dims, ONNX)
 - **Model Cache**: `~/.cache/codebaxing/models/` (~90MB, persists across npx runs)
+- **Parallel Embedding**: `worker_threads` pool (default 2 workers, each with own model)
 - **Vector DB**: ChromaDB (Node.js client requires server for persistence)
 - **Parser**: Tree-sitter with native Node.js bindings
 - **MCP SDK**: `@modelcontextprotocol/sdk`

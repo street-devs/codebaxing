@@ -13,6 +13,7 @@ import { TreeSitterParser } from '../parsers/treesitter-parser.js';
 import { getLanguageForFile, getSupportedExtensions } from '../parsers/language-configs.js';
 import { EmbeddingService, getEmbeddingService } from './embedding-service.js';
 import { parallelParseFiles, type ProgressCallback } from './parallel-indexer.js';
+import { EmbeddingWorkerPool, getEmbeddingPool } from './embedding-pool.js';
 import type { Symbol } from '../core/models.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -95,7 +96,7 @@ function getFilesPerBatch(): number {
     const val = parseInt(envVal, 10);
     if (!isNaN(val) && val > 0) return val;
   }
-  return 50; // Default 50 files per batch
+  return 100; // Default 100 files per batch (increased for better throughput)
 }
 
 function getEmbedBatchSize(): number {
@@ -116,6 +117,29 @@ function getParallelBatches(): number {
     if (!isNaN(val) && val > 0 && val <= 10) return val;
   }
   return 3; // Default 3 concurrent batches
+}
+
+// How often to save metadata (every N batches). Default 10.
+// Lower = more crash safety, higher = faster indexing.
+function getMetadataSaveInterval(): number {
+  const envVal = process.env.CODEBAXING_METADATA_SAVE_INTERVAL;
+  if (envVal) {
+    const val = parseInt(envVal, 10);
+    if (!isNaN(val) && val > 0) return val;
+  }
+  return 10; // Default: save every 10 batches
+}
+
+// Worker pool for true parallel embedding via worker_threads.
+// Each worker loads its own ONNX model, enabling real parallelism.
+// Set CODEBAXING_WORKERS=0 to disable, or N (1-8) for N workers.
+function getWorkerCount(): number {
+  const envVal = process.env.CODEBAXING_WORKERS;
+  if (envVal) {
+    const val = parseInt(envVal, 10);
+    if (!isNaN(val) && val >= 0 && val <= 8) return val;
+  }
+  return 2; // Default: 2 workers (optimal for most machines)
 }
 
 // ─── Ignore Config ──────────────────────────────────────────────────────────
@@ -349,6 +373,7 @@ export class SourceRetriever {
 
   private parser: TreeSitterParser;
   private embeddingService: EmbeddingService;
+  private embeddingPool: EmbeddingWorkerPool | null = null;
   private chromaClient: ChromaClient;
   private collection: Collection | null = null;
 
@@ -473,8 +498,10 @@ export class SourceRetriever {
     const filesPerBatch = getFilesPerBatch();
     const embedBatchSize = getEmbedBatchSize();
 
+    const metadataSaveInterval = getMetadataSaveInterval();
+
     if (this.verbose) {
-      this.log(`  File batch: ${filesPerBatch}  |  Embed batch: ${embedBatchSize}`);
+      this.log(`  File batch: ${filesPerBatch}  |  Embed batch: ${embedBatchSize}  |  Save every: ${metadataSaveInterval} batches`);
     }
 
     // Step 1: Find all files
@@ -536,6 +563,18 @@ export class SourceRetriever {
     const maxChunks = getMaxChunks();
     const minCodeLength = 30;
     const parallelBatches = getParallelBatches();
+    const workerCount = getWorkerCount();
+
+    // Initialize worker pool if enabled via CODEBAXING_WORKERS env var
+    if (workerCount > 0 && !this.embeddingPool) {
+      try {
+        this.embeddingPool = getEmbeddingPool({ numWorkers: workerCount, modelName: this.embeddingModel });
+        await this.embeddingPool.initialize();
+      } catch (e) {
+        console.error(`[codebaxing] Worker pool failed, using single-threaded: ${(e as Error).message}`);
+        this.embeddingPool = null;
+      }
+    }
 
     // Shared state (updated atomically after each batch completes)
     const seenIds = new Map<string, number>();
@@ -547,7 +586,8 @@ export class SourceRetriever {
     const batchStartTime = performance.now();
 
     if (this.verbose) {
-      console.log(`  Parallel batches: ${parallelBatches}`);
+      const mode = this.embeddingPool ? `Workers: ${this.embeddingPool.workerCount}` : 'Single-threaded';
+      console.log(`  Parallel batches: ${parallelBatches}  |  ${mode}`);
     }
 
     // Process a single batch - returns results to be merged
@@ -588,13 +628,17 @@ export class SourceRetriever {
         return { chunks: [], embeddings: [], symbols: batchSymbols, errors: batchErrors, fileCount: batchFiles.length, batchFiles };
       }
 
-      // Embed in sub-batches
+      // Embed in sub-batches (use worker pool if available for true parallelism)
       const allEmbeddings: number[][] = [];
+      const embedFn = this.embeddingPool
+        ? (texts: string[]) => this.embeddingPool!.embedBatch(texts)
+        : (texts: string[]) => this.embeddingService.embedBatch(texts);
+
       for (let i = 0; i < batchChunks.length; i += embedBatchSize) {
         const subBatch = batchChunks.slice(i, i + embedBatchSize);
         const texts = subBatch.map(c => c.text);
         try {
-          const embeddings = await this.embeddingService.embedBatch(texts);
+          const embeddings = await embedFn(texts);
           allEmbeddings.push(...embeddings);
         } catch (e) {
           // Let model loading errors propagate — don't silently produce zero-vectors
@@ -680,6 +724,7 @@ export class SourceRetriever {
       emit('embedding_progress', { current: totalChunks, total: allFiles.length * 5 });
 
       // Save metadata progressively so resume works after crash
+      // Only save every N batches to reduce IO overhead (configurable via CODEBAXING_METADATA_SAVE_INTERVAL)
       if (this.persistPath) {
         // Mark batch files as indexed in metadata
         const progressMtimes = (this.metadata.fileMtimes as Record<string, number>) ?? {};
@@ -690,8 +735,13 @@ export class SourceRetriever {
           } catch { /* skip */ }
         }
         this.metadata.fileMtimes = progressMtimes;
-        const metadataPath = path.join(path.dirname(this.persistPath), 'metadata.json');
-        this.saveMetadata(metadataPath);
+
+        // Only write to disk every N batches (or on last batch)
+        const saveInterval = getMetadataSaveInterval();
+        if (batchesCompleted % saveInterval === 0 || batchesCompleted === numBatches) {
+          const metadataPath = path.join(path.dirname(this.persistPath), 'metadata.json');
+          this.saveMetadata(metadataPath);
+        }
       }
     };
 
@@ -727,6 +777,12 @@ export class SourceRetriever {
       if (result && !reachedMaxChunks) {
         await storeBatchResults(result, batchIdx);
       }
+    }
+
+    // Terminate worker pool to allow process exit
+    if (this.embeddingPool) {
+      await this.embeddingPool.terminate();
+      this.embeddingPool = null;
     }
 
     this.stats.totalSymbols = totalSymbols;
