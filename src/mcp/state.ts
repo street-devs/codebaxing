@@ -97,6 +97,28 @@ export function hasValidIndex(paths: CodebaxingPaths): boolean {
 }
 
 /**
+ * Find an indexed parent directory (up to maxLevels up).
+ * Returns the parent path if found, otherwise null.
+ */
+export function findIndexedParent(codebasePath: string, maxLevels: number = 5): string | null {
+  let current = path.resolve(codebasePath);
+  const root = path.parse(current).root;
+
+  for (let i = 0; i < maxLevels; i++) {
+    const parent = path.dirname(current);
+    if (parent === current || parent === root) break;
+
+    const parentPaths = getCodebaxingPaths(parent);
+    if (hasValidIndex(parentPaths)) {
+      return parent;
+    }
+    current = parent;
+  }
+
+  return null;
+}
+
+/**
  * Check if an existing index uses the old absolute-path format.
  * Old format: metadata.json exists but config.json does not.
  */
@@ -130,8 +152,17 @@ export async function ensureLoaded(
 ): Promise<boolean> {
   if (!codePath) return state.isLoaded;
 
-  const codebasePath = path.resolve(codePath);
-  const paths = getCodebaxingPaths(codebasePath);
+  let codebasePath = path.resolve(codePath);
+  let paths = getCodebaxingPaths(codebasePath);
+
+  // Check if valid index exists on disk, or in parent directories
+  if (!hasValidIndex(paths)) {
+    const indexedParent = findIndexedParent(codebasePath);
+    if (indexedParent) {
+      codebasePath = indexedParent;
+      paths = getCodebaxingPaths(codebasePath);
+    }
+  }
 
   // Already loaded for this path
   if (state.isLoaded && state.codebasePath === codebasePath) {

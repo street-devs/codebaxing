@@ -26,6 +26,7 @@ import {
   getState,
   getCodebaxingPaths,
   hasValidIndex,
+  findIndexedParent,
   ensureLoaded,
   isIndexing,
   isLegacyIndex,
@@ -85,7 +86,7 @@ Creates a .codebaxing/ folder in the codebase directory.`,
   { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   async (args) => {
     const state = getState();
-    const codebasePath = path.resolve(args.path);
+    let codebasePath = path.resolve(args.path);
 
     if (!fs.existsSync(codebasePath)) {
       return { content: [{ type: 'text' as const, text: JSON.stringify({ error: `Path does not exist: ${codebasePath}` }) }] };
@@ -94,8 +95,18 @@ Creates a .codebaxing/ folder in the codebase directory.`,
       return { content: [{ type: 'text' as const, text: JSON.stringify({ error: `Path is not a directory: ${codebasePath}` }) }] };
     }
 
-    const paths = getCodebaxingPaths(codebasePath);
-    const hasExisting = hasValidIndex(paths);
+    let paths = getCodebaxingPaths(codebasePath);
+    let hasExisting = hasValidIndex(paths);
+
+    // If no index at this path, check parent directories (up to 5 levels)
+    if (!hasExisting && args.mode !== 'full') {
+      const indexedParent = findIndexedParent(codebasePath);
+      if (indexedParent) {
+        codebasePath = indexedParent;
+        paths = getCodebaxingPaths(codebasePath);
+        hasExisting = true;
+      }
+    }
 
     let result: Record<string, unknown>;
 
