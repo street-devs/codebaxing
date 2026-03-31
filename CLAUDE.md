@@ -62,7 +62,7 @@ src/
 |----------|-------------|---------|
 | `CHROMADB_URL` | ChromaDB server URL (**required**) | - |
 | `CODEBAXING_EMBEDDING_PROVIDER` | Embedding backend: `local`, `openai`, `voyage`, `gemini` | `local` |
-| `CODEBAXING_DEVICE` | Compute device (local only): `cpu`, `cuda` | `cpu` |
+| `CODEBAXING_DEVICE` | Compute device (local only): `cpu`, `coreml`, `webgpu`, `cuda`, `auto` | `cpu` (fastest for default small model) |
 | `CODEBAXING_DTYPE` | Model quantization (local only): `fp32`, `fp16`, `q8`, `q4` | `q8` |
 | `CODEBAXING_WORKERS` | Worker threads for parallel embedding (local only, 0=off) | `2` |
 | `CODEBAXING_FILES_PER_BATCH` | Files per batch | `100` |
@@ -109,6 +109,11 @@ Note: Switching providers requires full re-index (`mode=full`) due to dimension 
   Use `fp32` only if embedding quality issues are suspected.
 - **Workers** (default 2): Each worker loads its own ONNX model for true parallel embedding.
   Set `CODEBAXING_WORKERS=0` to disable (single-threaded), or up to 8 for large codebases.
+- **CoreML** (macOS): Apple Neural Engine / Metal GPU via `onnxruntime-node`.
+  Set `CODEBAXING_DEVICE=coreml`. Falls back to CPU automatically if unavailable.
+  Note: CPU is faster for the default small model (~720 vs ~96 texts/sec).
+- **WebGPU** (macOS): Metal GPU via `onnxruntime-node` WebGPU EP.
+  Set `CODEBAXING_DEVICE=webgpu`. (~343 texts/sec, slower than CPU for small model).
 - **CUDA**: NVIDIA GPU acceleration on Linux/Windows. macOS does not support CUDA.
 
 ## Commands

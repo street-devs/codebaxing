@@ -10,7 +10,7 @@ import { EmbeddingError } from '../core/exceptions.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-export type CloudProvider = 'openai' | 'voyage' | 'gemini';
+export type CloudProvider = 'openai' | 'voyage' | 'gemini' | 'ollama';
 
 export interface CloudEmbeddingConfig {
   provider: CloudProvider;
@@ -47,6 +47,12 @@ const PROVIDER_DEFAULTS: Record<CloudProvider, ProviderDefaults> = {
     dimensions: 3072,
     batchSize: 100, // Gemini batch limit: 100 texts per request
     baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+  },
+  ollama: {
+    model: 'nomic-embed-text',
+    dimensions: 768,
+    batchSize: 512,
+    baseUrl: 'http://localhost:11434/v1/embeddings',
   },
 };
 
@@ -177,12 +183,16 @@ export class CloudEmbeddingService implements IEmbeddingService {
 
     for (let attempt = 0; attempt < retries; attempt++) {
       try {
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+        };
+        if (this.apiKey) {
+          headers['Authorization'] = `Bearer ${this.apiKey}`;
+        }
+
         const response = await fetch(this.baseUrl, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${this.apiKey}`,
-          },
+          headers,
           body: JSON.stringify(body),
         });
 

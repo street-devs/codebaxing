@@ -6,12 +6,16 @@
  *
  * Device Support:
  *   Set CODEBAXING_DEVICE environment variable:
- *   - 'cpu' (default): CPU inference, works everywhere
- *   - 'webgpu': WebGPU backend (experimental, uses Metal on macOS)
+ *   - 'coreml': Apple Neural Engine / Metal GPU (macOS only, default on macOS)
  *   - 'cuda': NVIDIA GPU (Linux/Windows only, requires CUDA drivers)
+ *   - 'cpu': CPU inference, works everywhere
+ *   - 'webgpu': WebGPU backend (experimental)
  *   - 'auto': Auto-detect best available device
  *
- * Note: macOS does not support CUDA. Use 'webgpu' for GPU acceleration on Mac.
+ * Default: GPU-preferred per platform (macOS→coreml, Linux/Win→cuda), falls back to CPU.
+ *
+ * Note: For the small default model (all-MiniLM-L6-v2 q8), CPU is often faster
+ *       due to low CPU↔GPU transfer overhead. GPU shines with larger/fp32 models.
  */
 
 import fs from 'node:fs';
@@ -22,22 +26,38 @@ import type { IEmbeddingService } from '../core/interfaces.js';
 
 // ─── Device Configuration ─────────────────────────────────────────────────────
 
-export type DeviceType = 'cpu' | 'cuda' | 'webgpu' | 'auto';
+export type DeviceType = 'cpu' | 'cuda' | 'coreml' | 'webgpu' | 'auto';
 export type DType = 'fp32' | 'fp16' | 'q8' | 'q4';
 
-const VALID_DEVICES: DeviceType[] = ['cpu', 'cuda', 'webgpu', 'auto'];
+const VALID_DEVICES: DeviceType[] = ['cpu', 'cuda', 'coreml', 'webgpu', 'auto'];
 const VALID_DTYPES: DType[] = ['fp32', 'fp16', 'q8', 'q4'];
 
 /**
+ * Detect the best available device for the current platform.
+ *
+ * Defaults to 'cpu' because the default model (all-MiniLM-L6-v2, q8) is a small
+ * 6-layer model where CPU is fastest (~720 texts/sec vs ~343 WebGPU vs ~96 CoreML).
+ * GPU overhead (data transfer, session compilation) exceeds compute savings.
+ *
+ * GPU options are available via CODEBAXING_DEVICE env var for larger models:
+ * - macOS: 'coreml' (Apple Neural Engine / Metal GPU via onnxruntime-node)
+ * - macOS: 'webgpu' (Metal GPU via onnxruntime-node WebGPU EP)
+ * - Linux/Windows: 'cuda' (NVIDIA GPU, requires CUDA drivers)
+ */
+function detectBestDevice(): DeviceType {
+  return 'cpu';
+}
+
+/**
  * Get the configured device from environment variable.
- * Defaults to 'cpu' for maximum compatibility.
+ * Defaults to GPU-preferred auto-detection (falls back to CPU on failure).
  */
 export function getConfiguredDevice(): DeviceType {
   const envDevice = process.env.CODEBAXING_DEVICE?.toLowerCase();
   if (envDevice && VALID_DEVICES.includes(envDevice as DeviceType)) {
     return envDevice as DeviceType;
   }
-  return 'cpu';
+  return detectBestDevice();
 }
 
 /**
@@ -209,9 +229,14 @@ export class EmbeddingService implements IEmbeddingService {
           progress_callback: progressCallback,
         };
 
-        // Configure device (Transformers.js uses 'device' option)
-        // Note: 'auto' lets Transformers.js pick the best available
-        if (this.device !== 'cpu') {
+        // Configure device
+        // 'coreml' uses native onnxruntime-node with CoreML execution provider (macOS Metal/ANE)
+        // Other GPU devices use Transformers.js device option directly
+        if (this.device === 'coreml') {
+          pipelineOptions.session_options = {
+            executionProviders: ['coreml', 'cpu'],
+          };
+        } else if (this.device !== 'cpu') {
           pipelineOptions.device = this.device;
         }
 
@@ -241,17 +266,33 @@ export class EmbeddingService implements IEmbeddingService {
             } else {
               throw new EmbeddingError(`Failed to load embedding model: ${errorMsg}`);
             }
-          // If GPU failed, try falling back to CPU
-          } else if (this.device !== 'cpu' && (errorMsg.includes('GPU') || errorMsg.includes('CUDA') || errorMsg.includes('WebGPU'))) {
+          // Non-CPU device failed — fallback to CPU (catches WebGPU unavailable, CUDA missing, etc.)
+          } else if (this.device !== 'cpu') {
             console.error(
-              `[codebaxing] Failed to use ${deviceLabel}: ${errorMsg}. Falling back to CPU.`
+              `[codebaxing] ${deviceLabel} unavailable: ${errorMsg}. Falling back to CPU.`
             );
             this.device = 'cpu';
-            this.extractor = await pipeline('feature-extraction', this.config.modelId, {
-              dtype: this.dtype,
-            });
+            try {
+              this.extractor = await pipeline('feature-extraction', this.config.modelId, {
+                dtype: this.dtype,
+              });
+            } catch (cpuErr) {
+              // CPU also failed — try default model if using custom model
+              if (this.modelName !== DEFAULT_MODEL) {
+                console.error(
+                  `[codebaxing] Failed to load model ${this.config.modelId}: ${(cpuErr as Error).message}. ` +
+                  `Falling back to ${DEFAULT_MODEL}`
+                );
+                this.config = { ...EMBEDDING_MODELS[DEFAULT_MODEL] };
+                this.extractor = await pipeline('feature-extraction', this.config.modelId, {
+                  dtype: this.dtype,
+                });
+              } else {
+                throw new EmbeddingError(`Failed to load embedding model: ${(cpuErr as Error).message}`);
+              }
+            }
           } else if (this.modelName !== DEFAULT_MODEL) {
-            // Fall back to default model if custom model fails
+            // CPU + custom model failed — fall back to default model
             console.error(
               `[codebaxing] Failed to load model ${this.config.modelId}: ${errorMsg}. ` +
               `Falling back to ${DEFAULT_MODEL}`

@@ -12,9 +12,9 @@ import { CloudEmbeddingService, type CloudProvider } from './cloud-embedding-ser
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-export type EmbeddingProvider = 'local' | 'openai' | 'voyage' | 'gemini';
+export type EmbeddingProvider = 'local' | 'openai' | 'voyage' | 'gemini' | 'ollama';
 
-const VALID_PROVIDERS: EmbeddingProvider[] = ['local', 'openai', 'voyage', 'gemini'];
+const VALID_PROVIDERS: EmbeddingProvider[] = ['local', 'openai', 'voyage', 'gemini', 'ollama'];
 
 // ─── Configuration ───────────────────────────────────────────────────────────
 
@@ -51,7 +51,7 @@ export function createEmbeddingService(
   }
 
   // Cloud providers
-  const apiKey = getApiKey(provider);
+  const apiKey = provider === 'ollama' ? '' : getApiKey(provider);
   const model = process.env.CODEBAXING_EMBEDDING_MODEL;
   const dimensionsEnv = process.env.CODEBAXING_EMBEDDING_DIMENSIONS;
   const dimensions = dimensionsEnv ? parseInt(dimensionsEnv, 10) : undefined;
